@@ -342,9 +342,10 @@ void SwapChainVkImpl::CreateVulkanSwapChain()
         }
         else
         {
-            // Mailbox is the lowest latency non-tearing presentation mode.
-            PreferredPresentModes.push_back(VK_PRESENT_MODE_MAILBOX_KHR);
+            // Immediate presents without waiting for VSync, as D3D11 and D3D12 do with sync interval 0.
+            // Mailbox does not tear, but some drivers pace it to the display refresh rate.
             PreferredPresentModes.push_back(VK_PRESENT_MODE_IMMEDIATE_KHR);
+            PreferredPresentModes.push_back(VK_PRESENT_MODE_MAILBOX_KHR);
             PreferredPresentModes.push_back(VK_PRESENT_MODE_FIFO_KHR);
         }
 
