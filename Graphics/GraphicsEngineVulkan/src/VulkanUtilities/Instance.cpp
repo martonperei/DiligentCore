@@ -555,6 +555,13 @@ Instance::Instance(const CreateInfo& CI) :
         else
             LOG_WARNING_MESSAGE("Neither ", VK_EXT_DEBUG_UTILS_EXTENSION_NAME, " nor ", VK_EXT_DEBUG_REPORT_EXTENSION_NAME, " extension is available. Debug tools (validation layer message logging, performance markers, etc.) will be disabled.");
     }
+    else if (IsExtensionAvailable(VK_EXT_DEBUG_UTILS_EXTENSION_NAME))
+    {
+        // Graphics debuggers and GPU profilers read debug groups and labels without validation,
+        // so enable the extension whenever it is available. The messenger and object names stay
+        // with validation.
+        InstanceExtensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+    }
 
     if (CI.ppEnabledLayerNames != nullptr)
     {
