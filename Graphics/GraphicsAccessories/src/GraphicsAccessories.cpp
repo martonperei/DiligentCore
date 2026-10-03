@@ -2496,12 +2496,6 @@ BufferToTextureCopyInfo GetBufferToTextureCopyInfo(TEXTURE_FORMAT Format,
     }
 
     VERIFY_EXPR(IsPowerOfTwo(RowStrideAlignment));
-    // The aligned row stride must hold a whole number of texels (blocks), or RowStrideInTexels below is
-    // truncated and the copy shears. That holds for every width only when one of the element size and
-    // the alignment divides the other, which the 12-byte texels of RGB32 formats break for alignments above 4.
-    DEV_CHECK_ERR(RowStrideAlignment % FmtAttribs.GetElementSize() == 0 || FmtAttribs.GetElementSize() % RowStrideAlignment == 0,
-                  "Row stride alignment (", RowStrideAlignment, ") is incompatible with the ", FmtAttribs.GetElementSize(),
-                  "-byte elements of format ", FmtAttribs.Name, ": aligned row strides would not hold a whole number of texels.");
     CopyInfo.RowStride = AlignUp(CopyInfo.RowSize, RowStrideAlignment);
     if (FmtAttribs.ComponentType == COMPONENT_TYPE_COMPRESSED)
     {

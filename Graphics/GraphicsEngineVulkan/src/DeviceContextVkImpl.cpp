@@ -2470,6 +2470,12 @@ void DeviceContextVkImpl::UpdateTexture(ITexture*                      pTexture,
         // state mismatch error will occur.
         UnbindTextureFromFramebuffer(pTexVk, true);
 
+        // vkCmdCopyBufferToImage takes the row stride in texels, so a stride that does not hold a whole number
+        // of texels (blocks) is truncated below and the copy shears.
+        DEV_CHECK_ERR(SubresData.Stride % FmtAttribs.GetElementSize() == 0,
+                      "Source buffer stride (", SubresData.Stride, ") is not a multiple of the ", FmtAttribs.GetElementSize(),
+                      "-byte elements of format ", FmtAttribs.Name, ".");
+
         const Uint32 SrcBufferRowStrideInTexels = (FmtAttribs.ComponentType == COMPONENT_TYPE_COMPRESSED) ?
             StaticCast<Uint32>(SubresData.Stride / Uint64{FmtAttribs.ComponentSize} * Uint64{FmtAttribs.BlockWidth}) :
             StaticCast<Uint32>(SubresData.Stride / (Uint64{FmtAttribs.ComponentSize} * Uint64{FmtAttribs.NumComponents}));
@@ -2659,12 +2665,22 @@ void DeviceContextVkImpl::UpdateTextureRegion(const void*                    pSr
     const TextureDesc& TexDesc = TextureVk.GetDesc();
     VERIFY(TexDesc.SampleCount == 1, "Only single-sample textures can be updated with vkCmdCopyBufferToImage()");
 
+    const TextureFormatAttribs&   FmtAttribs        = GetTextureFormatAttribs(TexDesc.Format);
     const VkPhysicalDeviceLimits& DeviceLimits      = m_pDevice->GetPhysicalDevice().GetProperties().limits;
     const BufferToTextureCopyInfo CopyInfo          = GetBufferToTextureCopyInfo(TexDesc.Format, DstBox, static_cast<Uint32>(DeviceLimits.optimalBufferCopyRowPitchAlignment));
     const Uint32                  UpdateRegionDepth = CopyInfo.Region.Depth();
 
+    // vkCmdCopyBufferToImage takes the row stride in texels, so the aligned row stride must hold a whole number
+    // of texels (blocks), or CopyInfo.RowStrideInTexels is truncated and the copy shears. That holds for every
+    // width only when one of the element size and the alignment divides the other, which the 12-byte texels of
+    // RGB32 formats break for alignments above 4.
+    DEV_CHECK_ERR(DeviceLimits.optimalBufferCopyRowPitchAlignment % FmtAttribs.GetElementSize() == 0 ||
+                      FmtAttribs.GetElementSize() % DeviceLimits.optimalBufferCopyRowPitchAlignment == 0,
+                  "Updating textures of format ", FmtAttribs.Name, " is not supported: their ", FmtAttribs.GetElementSize(),
+                  "-byte texels do not fit the ", DeviceLimits.optimalBufferCopyRowPitchAlignment, "-byte row pitch alignment.");
+
     // For UpdateTextureRegion(), use UploadHeap, not dynamic heap
-    const VkDeviceSize     BufferOffsetAlignment = GetBufferToImageCopyOffsetAlignment(DeviceLimits, GetTextureFormatAttribs(TexDesc.Format));
+    const VkDeviceSize     BufferOffsetAlignment = GetBufferToImageCopyOffsetAlignment(DeviceLimits, FmtAttribs);
     const VkDeviceSize     HeapAlignment         = BufferOffsetAlignment & (~BufferOffsetAlignment + 1);
     VulkanUploadAllocation Allocation            = m_UploadHeap.Allocate(CopyInfo.MemorySize + BufferOffsetAlignment - HeapAlignment, HeapAlignment);
     // The allocation will stay in the upload heap until the end of the frame at which point all upload
@@ -2861,6 +2877,11 @@ void DeviceContextVkImpl::MapTextureSubresource(ITexture*                 pTextu
 
         const VkPhysicalDeviceLimits& DeviceLimits  = m_pDevice->GetPhysicalDevice().GetProperties().limits;
         const BufferToTextureCopyInfo CopyInfo      = GetBufferToTextureCopyInfo(TexDesc.Format, *pMapRegion, static_cast<Uint32>(DeviceLimits.optimalBufferCopyRowPitchAlignment));
+        // The aligned row stride must hold a whole number of texels (blocks), as in UpdateTextureRegion().
+        DEV_CHECK_ERR(DeviceLimits.optimalBufferCopyRowPitchAlignment % FmtAttribs.GetElementSize() == 0 ||
+                          FmtAttribs.GetElementSize() % DeviceLimits.optimalBufferCopyRowPitchAlignment == 0,
+                      "Mapping textures of format ", FmtAttribs.Name, " is not supported: their ", FmtAttribs.GetElementSize(),
+                      "-byte texels do not fit the ", DeviceLimits.optimalBufferCopyRowPitchAlignment, "-byte row pitch alignment.");
         const VkDeviceSize            Alignment     = GetBufferToImageCopyOffsetAlignment(DeviceLimits, FmtAttribs);
         const VkDeviceSize            HeapAlignment = Alignment & (~Alignment + 1);
         if (VulkanDynamicAllocation Allocation = AllocateDynamicSpace(CopyInfo.MemorySize + Alignment - HeapAlignment, static_cast<Uint32>(HeapAlignment)))
