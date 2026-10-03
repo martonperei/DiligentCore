@@ -593,6 +593,12 @@ void TextureVkImpl::CreateStagingTexture(const TextureData* pInitData, const Tex
     VkStagingBuffCI.flags = 0;
     VkStagingBuffCI.size  = GetStagingTextureDataSize(m_Desc, StagingBufferOffsetAlignment);
 
+    // Copies between the staging buffer and a texture require each subresource's offset to be a multiple
+    // of the format's texel block size. StagingBufferOffsetAlignment is not a multiple of the 12-byte texels of RGB32 formats.
+    DEV_CHECK_ERR(StagingBufferOffsetAlignment % FmtAttribs.GetElementSize() == 0,
+                  "Staging textures of format ", FmtAttribs.Name, " are not supported: their ", FmtAttribs.GetElementSize(),
+                  "-byte texels do not divide the ", StagingBufferOffsetAlignment, "-byte subresource alignment.");
+
     // clang-format off
         DEV_CHECK_ERR((m_Desc.CPUAccessFlags & (CPU_ACCESS_READ | CPU_ACCESS_WRITE)) == CPU_ACCESS_READ ||
                       (m_Desc.CPUAccessFlags & (CPU_ACCESS_READ | CPU_ACCESS_WRITE)) == CPU_ACCESS_WRITE,
