@@ -1576,8 +1576,9 @@ bool GPUUploadManagerImpl::ScheduleTextureUpdate(const ScheduleTextureUpdateInfo
     };
     ScheduleUpdateData UpdateData{
         UpdateInfo,
+        // UpdateTexture() requires the row and depth strides to be multiples of 4 bytes.
         !UseD3D11TextureCallback ?
-            GetBufferToTextureCopyInfo(Format, UpdateInfo.DstBox, m_TextureUpdateStrideAlignment) :
+            GetBufferToTextureCopyInfo(Format, UpdateInfo.DstBox, std::max(m_TextureUpdateStrideAlignment, 4u)) :
             BufferToTextureCopyInfo{},
         // The source offset of a buffer-to-texture copy must be a multiple of the texel block size
         // (Vulkan requires it explicitly), which is 12 bytes for RGB32 formats.
