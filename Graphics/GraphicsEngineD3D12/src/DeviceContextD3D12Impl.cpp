@@ -2098,7 +2098,13 @@ void DeviceContextD3D12Impl::CopyTextureRegion(ID3D12Resource*                pd
     bool StateTransitionRequired = false;
     if (TextureTransitionMode == RESOURCE_STATE_TRANSITION_MODE_TRANSITION)
     {
-        StateTransitionRequired = TextureD3D12.IsInKnownState() && !TextureD3D12.CheckState(RESOURCE_STATE_COPY_DEST);
+        // A copy queue copies into a texture only in the common layout: D3D12 promotes a texture in the common state
+        // to the copy destination for the copy, and returns it to the common state when the queue's submission ends.
+        // So on a copy queue no barrier goes around the copy into a texture in the common state, which a texture
+        // created without initial data, in RESOURCE_STATE_UNDEFINED, is in too.
+        const bool PromotedOnCopyQueue = CmdCtx.GetCommandListType() == D3D12_COMMAND_LIST_TYPE_COPY &&
+            ResourceStateFlagsToD3D12ResourceStates(TextureD3D12.GetState()) == D3D12_RESOURCE_STATE_COMMON;
+        StateTransitionRequired        = TextureD3D12.IsInKnownState() && !TextureD3D12.CheckState(RESOURCE_STATE_COPY_DEST) && !PromotedOnCopyQueue;
     }
 #ifdef DILIGENT_DEVELOPMENT
     else if (TextureTransitionMode == RESOURCE_STATE_TRANSITION_MODE_VERIFY)
