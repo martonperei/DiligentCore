@@ -68,6 +68,13 @@ struct GPUUploadManagerCreateInfo
     /// Maximum number of large pages that the manager should maintain. If 0, there is no limit to the number
     /// of large pages that can be created.
     Uint32 MaxLargePageCount DEFAULT_INITIALIZER(16);
+
+    /// Defines which immediate contexts are allowed to use the manager's staging buffers and textures.
+
+    /// When ImmediateContextMask contains a bit at position n, the staging resources may be
+    /// used in the immediate context with index n (see DeviceContextDesc::ContextId).
+    /// The mask must contain the bit of the manager context, which records the copies.
+    Uint64 ImmediateContextMask DEFAULT_INITIALIZER(1);
 };
 typedef struct GPUUploadManagerCreateInfo GPUUploadManagerCreateInfo;
 

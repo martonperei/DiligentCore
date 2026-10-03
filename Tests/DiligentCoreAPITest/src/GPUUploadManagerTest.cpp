@@ -1359,11 +1359,11 @@ void TestWriterScheduleTextureUpdates(Uint32 Flags = TEST_TEXTURE_UPDATES_FLAGS_
     std::unique_ptr<GPUUploadManagerImpl::Page> Page;
     if (pDevice->GetDeviceInfo().Type == RENDER_DEVICE_TYPE_D3D11)
     {
-        Page = std::make_unique<GPUUploadManagerImpl::Page>(nullptr, pDevice, TexDesc.Width, TexDesc.Format);
+        Page = std::make_unique<GPUUploadManagerImpl::Page>(nullptr, pDevice, TexDesc.Width, TexDesc.Format, Uint64{1});
     }
     else
     {
-        Page = std::make_unique<GPUUploadManagerImpl::Page>(nullptr, pDevice, TexDesc.Width * TexDesc.Height * ElementSize);
+        Page = std::make_unique<GPUUploadManagerImpl::Page>(nullptr, pDevice, TexDesc.Width * TexDesc.Height * ElementSize, Uint64{1});
     }
 
     Page->Reset(pContext);
@@ -1559,11 +1559,11 @@ TEST(GPUUploadManagerTest, Writer_ScheduleTextureUpdateParallel)
     std::unique_ptr<GPUUploadManagerImpl::Page> Page;
     if (pDevice->GetDeviceInfo().Type == RENDER_DEVICE_TYPE_D3D11)
     {
-        Page = std::make_unique<GPUUploadManagerImpl::Page>(nullptr, pDevice, TexDesc.Width, TexDesc.Format);
+        Page = std::make_unique<GPUUploadManagerImpl::Page>(nullptr, pDevice, TexDesc.Width, TexDesc.Format, Uint64{1});
     }
     else
     {
-        Page = std::make_unique<GPUUploadManagerImpl::Page>(nullptr, pDevice, TexDesc.Width * TexDesc.Height * ElementSize);
+        Page = std::make_unique<GPUUploadManagerImpl::Page>(nullptr, pDevice, TexDesc.Width * TexDesc.Height * ElementSize, Uint64{1});
     }
 
     Page->Reset(pContext);
