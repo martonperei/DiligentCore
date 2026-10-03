@@ -29,6 +29,7 @@
 
 #include "DeviceContextVkImpl.hpp"
 
+#include <numeric>
 #include <sstream>
 #include <vector>
 
@@ -2631,6 +2632,18 @@ void DeviceContextVkImpl::CopyTextureRegion(TextureVkImpl*                 pSrcT
     ++m_State.NumCommands;
 }
 
+// Returns the alignment of the buffer offset of a buffer-to-image copy into a texture of the given format.
+// bufferOffset must be a multiple of 4 and of the texel block size in bytes (18.4), and should be a multiple
+// of optimalBufferCopyOffsetAlignment. The texel block size is not always a power of two (it is 12 bytes for
+// RGB32 formats), so neither is the alignment. The upload and dynamic heaps only align to powers of two, so
+// callers allocate with the largest power of two that divides the alignment, reserve the difference between
+// the two as extra space, and align the offset up within the allocation.
+static VkDeviceSize GetBufferToImageCopyOffsetAlignment(const VkPhysicalDeviceLimits& Limits, const TextureFormatAttribs& FmtAttribs)
+{
+    const VkDeviceSize Alignment = std::max(Limits.optimalBufferCopyOffsetAlignment, VkDeviceSize{4});
+    return std::lcm(Alignment, VkDeviceSize{FmtAttribs.GetElementSize()});
+}
+
 void DeviceContextVkImpl::UpdateTextureRegion(const void*                    pSrcData,
                                               Uint64                         SrcStride,
                                               Uint64                         SrcDepthStride,
@@ -2648,19 +2661,13 @@ void DeviceContextVkImpl::UpdateTextureRegion(const void*                    pSr
     const Uint32                  UpdateRegionDepth = CopyInfo.Region.Depth();
 
     // For UpdateTextureRegion(), use UploadHeap, not dynamic heap
-    // Source buffer offset must be multiple of 4 (18.4)
-    VkDeviceSize BufferOffsetAlignment = std::max(DeviceLimits.optimalBufferCopyOffsetAlignment, VkDeviceSize{4});
-    // If the calling command's VkImage parameter is a compressed image, bufferOffset must be a multiple of
-    // the compressed texel block size in bytes (18.4)
-    const TextureFormatAttribs& FmtAttribs = GetTextureFormatAttribs(TexDesc.Format);
-    if (FmtAttribs.ComponentType == COMPONENT_TYPE_COMPRESSED)
-    {
-        BufferOffsetAlignment = std::max(BufferOffsetAlignment, VkDeviceSize{FmtAttribs.ComponentSize});
-    }
-    VulkanUploadAllocation Allocation = m_UploadHeap.Allocate(CopyInfo.MemorySize, BufferOffsetAlignment);
+    const VkDeviceSize     BufferOffsetAlignment = GetBufferToImageCopyOffsetAlignment(DeviceLimits, GetTextureFormatAttribs(TexDesc.Format));
+    const VkDeviceSize     HeapAlignment         = BufferOffsetAlignment & (~BufferOffsetAlignment + 1);
+    VulkanUploadAllocation Allocation            = m_UploadHeap.Allocate(CopyInfo.MemorySize + BufferOffsetAlignment - HeapAlignment, HeapAlignment);
     // The allocation will stay in the upload heap until the end of the frame at which point all upload
     // pages will be discarded
-    VERIFY((Allocation.AlignedOffset % BufferOffsetAlignment) == 0, "Allocation offset must be at least 32-bit aligned");
+    const VkDeviceSize BufferOffset = AlignUpNonPw2(Allocation.AlignedOffset, BufferOffsetAlignment);
+    Uint8* const       pDstData     = reinterpret_cast<Uint8*>(Allocation.CPUAddress) + (BufferOffset - Allocation.AlignedOffset);
 
 #ifdef DILIGENT_DEBUG
     {
@@ -2679,7 +2686,7 @@ void DeviceContextVkImpl::UpdateTextureRegion(const void*                    pSr
                 + row        * SrcStride
                 + DepthSlice * SrcDepthStride;
             Uint8* pDstPtr =
-                reinterpret_cast<Uint8*>(Allocation.CPUAddress)
+                pDstData
                 + row        * CopyInfo.RowStride
                 + DepthSlice * CopyInfo.DepthStride;
             // clang-format on
@@ -2688,7 +2695,7 @@ void DeviceContextVkImpl::UpdateTextureRegion(const void*                    pSr
         }
     }
     CopyBufferToTexture(Allocation.vkBuffer,
-                        Allocation.AlignedOffset,
+                        BufferOffset,
                         CopyInfo.RowStrideInTexels,
                         TextureVk,
                         CopyInfo.Region,
@@ -2849,18 +2856,14 @@ void DeviceContextVkImpl::MapTextureSubresource(ITexture*                 pTextu
         if ((MapFlags & (MAP_FLAG_DISCARD | MAP_FLAG_NO_OVERWRITE)) != 0)
             LOG_INFO_MESSAGE_ONCE("Mapping textures with flags MAP_FLAG_DISCARD or MAP_FLAG_NO_OVERWRITE has no effect in Vulkan backend");
 
-        const VkPhysicalDeviceLimits& DeviceLimits = m_pDevice->GetPhysicalDevice().GetProperties().limits;
-        const BufferToTextureCopyInfo CopyInfo     = GetBufferToTextureCopyInfo(TexDesc.Format, *pMapRegion, static_cast<Uint32>(DeviceLimits.optimalBufferCopyRowPitchAlignment));
-        // Source buffer offset must be multiple of 4 (18.4)
-        VkDeviceSize Alignment = std::max(DeviceLimits.optimalBufferCopyOffsetAlignment, VkDeviceSize{4});
-        // If the calling command's VkImage parameter is a compressed image, bufferOffset must be a multiple of
-        // the compressed texel block size in bytes (18.4)
-        if (FmtAttribs.ComponentType == COMPONENT_TYPE_COMPRESSED)
+        const VkPhysicalDeviceLimits& DeviceLimits  = m_pDevice->GetPhysicalDevice().GetProperties().limits;
+        const BufferToTextureCopyInfo CopyInfo      = GetBufferToTextureCopyInfo(TexDesc.Format, *pMapRegion, static_cast<Uint32>(DeviceLimits.optimalBufferCopyRowPitchAlignment));
+        const VkDeviceSize            Alignment     = GetBufferToImageCopyOffsetAlignment(DeviceLimits, FmtAttribs);
+        const VkDeviceSize            HeapAlignment = Alignment & (~Alignment + 1);
+        if (VulkanDynamicAllocation Allocation = AllocateDynamicSpace(CopyInfo.MemorySize + Alignment - HeapAlignment, static_cast<Uint32>(HeapAlignment)))
         {
-            Alignment = std::max(Alignment, VkDeviceSize{FmtAttribs.ComponentSize});
-        }
-        if (VulkanDynamicAllocation Allocation = AllocateDynamicSpace(CopyInfo.MemorySize, static_cast<Uint32>(Alignment)))
-        {
+            Allocation.AlignedOffset = StaticCast<size_t>(AlignUpNonPw2(VkDeviceSize{Allocation.AlignedOffset}, Alignment));
+
             MappedData.pData       = reinterpret_cast<Uint8*>(Allocation.pDynamicMemMgr->GetCPUAddress()) + Allocation.AlignedOffset;
             MappedData.Stride      = CopyInfo.RowStride;
             MappedData.DepthStride = CopyInfo.DepthStride;
