@@ -155,7 +155,7 @@ void TestWriterScheduleBufferUpdates(bool UseWriteCallback, bool UseCopyCallback
 
     Uint32 CurrOffset = 0;
 
-    GPUUploadManagerImpl::Page Page{nullptr, pDevice, static_cast<Uint32>(BufferData.size())};
+    GPUUploadManagerImpl::Page Page{nullptr, pDevice, static_cast<Uint32>(BufferData.size()), Uint64{1}};
     Page.Reset(pContext);
     Page.Unseal();
 
@@ -297,7 +297,7 @@ TEST(GPUUploadManagerTest, Writer_ScheduleBufferUpdateParallel)
     RefCntAutoPtr<IBuffer> pBuffer = CreateUploadTestBuffer(pDevice, BufferData.size());
     ASSERT_TRUE(pBuffer);
 
-    GPUUploadManagerImpl::Page Page{nullptr, pDevice, kPageSize};
+    GPUUploadManagerImpl::Page Page{nullptr, pDevice, kPageSize, Uint64{1}};
     Page.Reset(pContext);
     Page.Unseal();
 
@@ -1359,11 +1359,11 @@ void TestWriterScheduleTextureUpdates(Uint32 Flags = TEST_TEXTURE_UPDATES_FLAGS_
     std::unique_ptr<GPUUploadManagerImpl::Page> Page;
     if (pDevice->GetDeviceInfo().Type == RENDER_DEVICE_TYPE_D3D11)
     {
-        Page = std::make_unique<GPUUploadManagerImpl::Page>(nullptr, pDevice, TexDesc.Width, TexDesc.Format);
+        Page = std::make_unique<GPUUploadManagerImpl::Page>(nullptr, pDevice, TexDesc.Width, TexDesc.Format, Uint64{1});
     }
     else
     {
-        Page = std::make_unique<GPUUploadManagerImpl::Page>(nullptr, pDevice, TexDesc.Width * TexDesc.Height * ElementSize);
+        Page = std::make_unique<GPUUploadManagerImpl::Page>(nullptr, pDevice, TexDesc.Width * TexDesc.Height * ElementSize, Uint64{1});
     }
 
     Page->Reset(pContext);
@@ -1559,11 +1559,11 @@ TEST(GPUUploadManagerTest, Writer_ScheduleTextureUpdateParallel)
     std::unique_ptr<GPUUploadManagerImpl::Page> Page;
     if (pDevice->GetDeviceInfo().Type == RENDER_DEVICE_TYPE_D3D11)
     {
-        Page = std::make_unique<GPUUploadManagerImpl::Page>(nullptr, pDevice, TexDesc.Width, TexDesc.Format);
+        Page = std::make_unique<GPUUploadManagerImpl::Page>(nullptr, pDevice, TexDesc.Width, TexDesc.Format, Uint64{1});
     }
     else
     {
-        Page = std::make_unique<GPUUploadManagerImpl::Page>(nullptr, pDevice, TexDesc.Width * TexDesc.Height * ElementSize);
+        Page = std::make_unique<GPUUploadManagerImpl::Page>(nullptr, pDevice, TexDesc.Width * TexDesc.Height * ElementSize, Uint64{1});
     }
 
     Page->Reset(pContext);

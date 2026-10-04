@@ -80,11 +80,11 @@ public:
     public:
         explicit Page(Uint32 Size, bool PersistentMapped = false) noexcept;
 
-        Page(UploadStream* pStream, IRenderDevice* pDevice, Uint32 Size);
+        Page(UploadStream* pStream, IRenderDevice* pDevice, Uint32 Size, Uint64 ImmediateContextMask);
 
         // Special page for texture updates in Direct3D11, which require a staging texture.
         // The texture dimensions are Size x Size.
-        Page(UploadStream* pStream, IRenderDevice* pDevice, Uint32 Size, TEXTURE_FORMAT Format);
+        Page(UploadStream* pStream, IRenderDevice* pDevice, Uint32 Size, TEXTURE_FORMAT Format, Uint64 ImmediateContextMask);
 
         ~Page();
 
@@ -209,7 +209,7 @@ public:
         // staging texture to perform texture updates.
         struct StagingTextureAtlas
         {
-            StagingTextureAtlas(IRenderDevice* pDevice, Uint32 Width, Uint32 Height, TEXTURE_FORMAT Format, const std::string& Name);
+            StagingTextureAtlas(IRenderDevice* pDevice, Uint32 Width, Uint32 Height, TEXTURE_FORMAT Format, Uint64 ImmediateContextMask, const std::string& Name);
             ~StagingTextureAtlas();
 
             void* Map(IDeviceContext* pContext);
@@ -306,6 +306,7 @@ private:
     RefCntAutoPtr<IDeviceContext> m_pContext;
 
     const RENDER_DEVICE_TYPE m_DeviceType;
+    const Uint64             m_ImmediateContextMask;
 
     const Uint32 m_TextureUpdateOffsetAlignment;
     const Uint32 m_TextureUpdateStrideAlignment;
