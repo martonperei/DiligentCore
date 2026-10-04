@@ -191,6 +191,11 @@ public:
 
     void ResourceBarrier(const D3D12_RESOURCE_BARRIER& Barrier)
     {
+        // One ResourceBarrier() call may transition a subresource once. When a transition of
+        // the same subresources is already pending, the pending barriers go to the command list
+        // first, so that the two transitions reach D3D12 in order, in calls of their own.
+        if (Barrier.Type == D3D12_RESOURCE_BARRIER_TYPE_TRANSITION && HasPendingTransition(Barrier.Transition))
+            FlushResourceBarriers();
         m_PendingResourceBarriers.emplace_back(Barrier);
     }
 
@@ -258,6 +263,10 @@ protected:
     void*                m_pCurPipelineState         = nullptr;
     ID3D12RootSignature* m_pCurGraphicsRootSignature = nullptr;
     ID3D12RootSignature* m_pCurComputeRootSignature  = nullptr;
+
+    // Returns true when a pending transition barrier names the same resource and a subresource
+    // that Transition also names. D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES overlaps every subresource.
+    bool HasPendingTransition(const D3D12_RESOURCE_TRANSITION_BARRIER& Transition) const;
 
     std::vector<D3D12_RESOURCE_BARRIER, STDAllocatorRawMem<D3D12_RESOURCE_BARRIER>> m_PendingResourceBarriers;
 
