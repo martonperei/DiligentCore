@@ -155,7 +155,7 @@ void TestWriterScheduleBufferUpdates(bool UseWriteCallback, bool UseCopyCallback
 
     Uint32 CurrOffset = 0;
 
-    GPUUploadManagerImpl::Page Page{nullptr, pDevice, static_cast<Uint32>(BufferData.size())};
+    GPUUploadManagerImpl::Page Page{nullptr, pDevice, static_cast<Uint32>(BufferData.size()), Uint64{1}};
     Page.Reset(pContext);
     Page.Unseal();
 
@@ -297,7 +297,7 @@ TEST(GPUUploadManagerTest, Writer_ScheduleBufferUpdateParallel)
     RefCntAutoPtr<IBuffer> pBuffer = CreateUploadTestBuffer(pDevice, BufferData.size());
     ASSERT_TRUE(pBuffer);
 
-    GPUUploadManagerImpl::Page Page{nullptr, pDevice, kPageSize};
+    GPUUploadManagerImpl::Page Page{nullptr, pDevice, kPageSize, Uint64{1}};
     Page.Reset(pContext);
     Page.Unseal();
 

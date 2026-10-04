@@ -1150,6 +1150,9 @@ GPUUploadManagerImpl::GPUUploadManagerImpl(IReferenceCounters* pRefCounters, con
     m_TextureUpdateOffsetAlignment{m_pDevice->GetAdapterInfo().Buffer.TextureUpdateOffsetAlignment},
     m_TextureUpdateStrideAlignment{m_pDevice->GetAdapterInfo().Buffer.TextureUpdateStrideAlignment}
 {
+    if (CI.pContext != nullptr && !SetOrValidateContext(CI.pContext, "CreateGPUUploadManager"))
+        LOG_ERROR_AND_THROW("Invalid GPU upload manager context");
+
     const Uint32 PageSize = CI.PageSize != 0 ? CI.PageSize : GPUUploadManagerCreateInfo{}.PageSize;
     if (CI.PageSize == 0)
         LOG_ERROR_MESSAGE("GPUUploadManagerCreateInfo::PageSize must not be zero; using the default value ", PageSize);
@@ -1277,6 +1280,14 @@ bool GPUUploadManagerImpl::SetOrValidateContext(IDeviceContext* pContext, const 
     if (pContext == nullptr)
     {
         LOG_ERROR_MESSAGE("A valid context must be provided to ", MethodName, "()");
+        return false;
+    }
+
+    const DeviceContextDesc& Desc = pContext->GetDesc();
+    if (Desc.IsDeferred || Desc.ContextId >= 64 || (m_ImmediateContextMask & (Uint64{1} << Desc.ContextId)) == 0)
+    {
+        LOG_ERROR_MESSAGE("The immediate context provided to ", MethodName,
+                          "() must be included in GPUUploadManagerCreateInfo::ImmediateContextMask");
         return false;
     }
 
