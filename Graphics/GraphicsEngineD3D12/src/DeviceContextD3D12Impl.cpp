@@ -2010,6 +2010,15 @@ void DeviceContextD3D12Impl::CopyTexture(const CopyTextureAttribs& CopyAttribs)
                       CopyAttribs.DstTextureTransitionMode);
 }
 
+// Copy queues implicitly promote textures from COMMON for either side of a copy and
+// decay them back after execution. Retain COMMON in the tracker for the next queue.
+static bool IsCopyQueueTexturePromotion(CommandContext& CmdCtx, const TextureD3D12Impl& Texture)
+{
+    return CmdCtx.GetCommandListType() == D3D12_COMMAND_LIST_TYPE_COPY &&
+        Texture.GetDesc().Usage != USAGE_STAGING && Texture.IsInKnownState() &&
+        ResourceStateFlagsToD3D12ResourceStates(Texture.GetState()) == D3D12_RESOURCE_STATE_COMMON;
+}
+
 void DeviceContextD3D12Impl::CopyTextureRegion(TextureD3D12Impl*              pSrcTexture,
                                                const D3D12_BOX*               pD3D12SrcBox,
                                                RESOURCE_STATE_TRANSITION_MODE SrcTextureTransitionMode,
@@ -2098,16 +2107,13 @@ void DeviceContextD3D12Impl::CopyTextureRegion(ID3D12Resource*                pd
     bool StateTransitionRequired = false;
     if (TextureTransitionMode == RESOURCE_STATE_TRANSITION_MODE_TRANSITION)
     {
-        // A copy queue copies into a texture only in the common layout: D3D12 promotes a texture in the common state
-        // to the copy destination for the copy, and returns it to the common state when the queue's submission ends.
-        // So on a copy queue no barrier goes around the copy into a texture in the common state, which a texture
-        // created without initial data, in RESOURCE_STATE_UNDEFINED, is in too.
-        const bool PromotedOnCopyQueue = CmdCtx.GetCommandListType() == D3D12_COMMAND_LIST_TYPE_COPY &&
-            ResourceStateFlagsToD3D12ResourceStates(TextureD3D12.GetState()) == D3D12_RESOURCE_STATE_COMMON;
-        StateTransitionRequired        = TextureD3D12.IsInKnownState() && !TextureD3D12.CheckState(RESOURCE_STATE_COPY_DEST) && !PromotedOnCopyQueue;
+        StateTransitionRequired = TextureD3D12.IsInKnownState() &&
+            !TextureD3D12.CheckState(RESOURCE_STATE_COPY_DEST) &&
+            !IsCopyQueueTexturePromotion(CmdCtx, TextureD3D12);
     }
 #ifdef DILIGENT_DEVELOPMENT
-    else if (TextureTransitionMode == RESOURCE_STATE_TRANSITION_MODE_VERIFY)
+    else if (TextureTransitionMode == RESOURCE_STATE_TRANSITION_MODE_VERIFY &&
+             !IsCopyQueueTexturePromotion(CmdCtx, TextureD3D12))
     {
         DvpVerifyTextureState(TextureD3D12, RESOURCE_STATE_COPY_DEST, "Using texture as copy destination (DeviceContextD3D12Impl::CopyTextureRegion)");
     }
@@ -2671,6 +2677,10 @@ void DeviceContextD3D12Impl::TransitionOrVerifyTextureState(CommandContext&     
                                                             RESOURCE_STATE                 RequiredState,
                                                             const char*                    OperationName)
 {
+    if ((RequiredState == RESOURCE_STATE_COPY_SOURCE || RequiredState == RESOURCE_STATE_COPY_DEST) &&
+        IsCopyQueueTexturePromotion(CmdCtx, Texture))
+        return;
+
     if (TransitionMode == RESOURCE_STATE_TRANSITION_MODE_TRANSITION)
     {
         if (Texture.IsInKnownState())
