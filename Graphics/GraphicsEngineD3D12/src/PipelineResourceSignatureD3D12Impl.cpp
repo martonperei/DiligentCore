@@ -539,8 +539,9 @@ void PipelineResourceSignatureD3D12Impl::CommitRootViews(const CommitCacheResour
         if (BufferGPUAddress == 0)
         {
             // GPU address may be null if a dynamic buffer that is not used by the PSO has not been mapped yet.
+            // Skip this root view only, so that the remaining root views in the mask are still committed.
             // Dynamic allocations will be checked by DvpValidateCommittedResource()
-            return;
+            continue;
         }
 
         BufferGPUAddress += UINT64{Res.BufferBaseOffset} + UINT64{Res.BufferDynamicOffset};
