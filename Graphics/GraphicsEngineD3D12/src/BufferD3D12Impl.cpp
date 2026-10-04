@@ -140,8 +140,12 @@ BufferD3D12Impl::BufferD3D12Impl(IReferenceCounters*        pRefCounters,
                 std::min(pBuffData->DataSize, d3d12BuffDesc.Width) :
                 0;
 
-            if (InitialDataSize > 0)
-                SetState(RESOURCE_STATE_COPY_DEST);
+            // D3D12 creates a buffer in the common state and ignores any other initial state requested, which
+            // the debug layer reports (message ID 1328). Every D3D12 runtime promotes a buffer in the common state
+            // to the copy destination state for the initial copy below, and the buffer decays back to the common
+            // state when the copy's command list completes. A readback buffer stays in the copy destination state.
+            if (InitialDataSize > 0 && HeapProps.Type == D3D12_HEAP_TYPE_DEFAULT)
+                SetState(RESOURCE_STATE_COMMON);
 
             if (!IsInKnownState())
                 SetState(RESOURCE_STATE_UNDEFINED);
@@ -206,7 +210,7 @@ BufferD3D12Impl::BufferD3D12Impl(IReferenceCounters*        pRefCounters,
 
                 RenderDeviceD3D12Impl::PooledCommandContext InitContext = pRenderDeviceD3D12->AllocateCommandContext(CmdQueueInd);
                 // copy data to the intermediate upload heap and then schedule a copy from the upload heap to the default buffer
-                VERIFY_EXPR(CheckState(RESOURCE_STATE_COPY_DEST));
+                VERIFY_EXPR(CheckState(HeapProps.Type == D3D12_HEAP_TYPE_DEFAULT ? RESOURCE_STATE_COMMON : RESOURCE_STATE_COPY_DEST));
                 // We MUST NOT call TransitionResource() from here, because
                 // it will call AddRef() and potentially Release(), while
                 // the object is not constructed yet
