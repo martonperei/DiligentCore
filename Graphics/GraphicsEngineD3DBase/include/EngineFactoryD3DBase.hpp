@@ -79,11 +79,22 @@ public:
 
                 AdapterInfo.NumOutputs = 0;
                 CComPtr<IDXGIOutput> pOutput;
-                while (pDXIAdapter->EnumOutputs(AdapterInfo.NumOutputs, &pOutput) != DXGI_ERROR_NOT_FOUND)
+                // Count outputs only while EnumOutputs succeeds. A process outside the interactive
+                // session gets another failure than DXGI_ERROR_NOT_FOUND for every output it asks
+                // for, so a count that stopped only at DXGI_ERROR_NOT_FOUND asked for the next
+                // output forever.
+                HRESULT hr = S_OK;
+                while (SUCCEEDED(hr = pDXIAdapter->EnumOutputs(AdapterInfo.NumOutputs, &pOutput)))
                 {
                     ++AdapterInfo.NumOutputs;
                     pOutput.Release();
                 };
+                if (hr != DXGI_ERROR_NOT_FOUND)
+                {
+                    LOG_WARNING_MESSAGE("IDXGIAdapter::EnumOutputs(", AdapterInfo.NumOutputs, ") of adapter ", adapter,
+                                        " failed with HRESULT 0x", std::hex, static_cast<Uint32>(hr), std::dec,
+                                        "; the adapter's output count stops there");
+                }
             }
         }
     }
