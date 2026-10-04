@@ -115,6 +115,8 @@ struct XXH128State final
             return *this;
         if (Len == 0)
             Len = StrLen(pStr);
+        if (Len == 0)
+            return *this;
         return UpdateRaw(pStr, Len);
     }
 
