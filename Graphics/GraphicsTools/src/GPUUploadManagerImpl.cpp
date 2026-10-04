@@ -587,15 +587,15 @@ void GPUUploadManagerImpl::Page::Seal()
 Uint32 GPUUploadManagerImpl::Page::Allocate(Uint32 NumBytes, Uint32 Alignment)
 {
     // Texture updates may require an alignment that is not a power of two (see ScheduleTextureUpdate()).
-    const Uint32 AlignedSize = AlignUpNonPw2(NumBytes, Alignment);
+    // Align the start only: page selection reserves NumBytes, and the next allocation aligns its own start.
     for (;;)
     {
         Uint32 Offset        = m_Offset.load(std::memory_order_acquire);
         Uint32 AlignedOffset = AlignUpNonPw2(Offset, Alignment);
-        if (AlignedOffset + AlignedSize > m_Size)
+        if (AlignedOffset > m_Size || NumBytes > m_Size - AlignedOffset)
             return ~0u; // Fail without incrementing offset
 
-        if (m_Offset.compare_exchange_weak(Offset, AlignedOffset + AlignedSize, std::memory_order_acq_rel))
+        if (m_Offset.compare_exchange_weak(Offset, AlignedOffset + NumBytes, std::memory_order_acq_rel))
             return AlignedOffset; // Success
     }
 }
