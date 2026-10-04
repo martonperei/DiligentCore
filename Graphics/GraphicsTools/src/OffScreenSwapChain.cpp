@@ -68,6 +68,8 @@ public:
             Desc.Name = "Off-screen swap chain frame complete fence";
             Desc.Type = FENCE_TYPE_CPU_WAIT_ONLY;
             pDevice->CreateFence(Desc, &m_FrameCompleteFence);
+            if (!m_FrameCompleteFence)
+                LOG_ERROR_AND_THROW("Failed to create off-screen swap chain frame fence");
         }
 
         Resize(m_SwapChainDesc.Width, m_SwapChainDesc.Height, m_SwapChainDesc.PreTransform);
@@ -122,9 +124,11 @@ public:
                 RenderTargetDesc.Usage       = USAGE_DEFAULT;
                 RenderTargetDesc.BindFlags   = BIND_RENDER_TARGET;
                 m_pRenderDevice->CreateTexture(RenderTargetDesc, nullptr, &m_pRenderTarget);
-                VERIFY_EXPR(m_pRenderTarget != nullptr);
+                if (!m_pRenderTarget)
+                    LOG_ERROR_AND_THROW("Failed to create off-screen swap chain color buffer");
                 m_pRTV = m_pRenderTarget->GetDefaultView(TEXTURE_VIEW_RENDER_TARGET);
-                VERIFY_EXPR(m_pRTV != nullptr);
+                if (!m_pRTV)
+                    LOG_ERROR_AND_THROW("Failed to create off-screen swap chain render target view");
             }
 
             if (m_SwapChainDesc.DepthBufferFormat != TEX_FORMAT_UNKNOWN)
@@ -144,9 +148,11 @@ public:
                 DepthBufferDesc.ClearValue.DepthStencil.Stencil = m_SwapChainDesc.DefaultStencilValue;
 
                 m_pRenderDevice->CreateTexture(DepthBufferDesc, nullptr, &m_pDepthBuffer);
-                VERIFY_EXPR(m_pDepthBuffer != nullptr);
+                if (!m_pDepthBuffer)
+                    LOG_ERROR_AND_THROW("Failed to create off-screen swap chain depth buffer");
                 m_pDSV = m_pDepthBuffer->GetDefaultView(TEXTURE_VIEW_DEPTH_STENCIL);
-                VERIFY_EXPR(m_pDSV != nullptr);
+                if (!m_pDSV)
+                    LOG_ERROR_AND_THROW("Failed to create off-screen swap chain depth stencil view");
             }
         }
     }
