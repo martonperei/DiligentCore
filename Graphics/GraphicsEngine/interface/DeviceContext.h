@@ -3301,11 +3301,11 @@ DILIGENT_BEGIN_INTERFACE(IDeviceContext, IObject)
     ///
     /// \remarks    A query must be ended by the same context that began it.
     ///
-    /// In Direct3D12 and Vulkan, queries (except for timestamp queries)
-    /// cannot span command list boundaries, so the engine will never flush
-    /// the context even if the number of commands exceeds the user-specified limit
-    /// when there is an active query.
-    /// It is an error to explicitly flush the context while a query is active.
+    /// In Direct3D12 and Vulkan, native begin/end queries (such as occlusion and pipeline
+    /// statistics queries) cannot span command list boundaries. The engine does not flush
+    /// automatically while these queries are active, and explicitly flushing is an error.
+    /// Duration queries may span Flush() calls on the same immediate context in Direct3D12
+    /// and Vulkan: their endpoints are independent timestamps on the same command queue.
     ///
     /// All queries must be ended when FinishFrame() is called.
     ///
