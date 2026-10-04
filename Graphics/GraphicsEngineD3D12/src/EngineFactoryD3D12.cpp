@@ -462,6 +462,11 @@ void EngineFactoryD3D12Impl::CreateDeviceAndContextsD3D12(const EngineD3D12Creat
                     VERIFY(SUCCEEDED(hr), "Failed to set break on error");
                 }
             }
+            else
+            {
+                // Only the debug layer implements the info queue.
+                LOG_WARNING_MESSAGE("D3D12 debug layer is not available. Windows installs it with the Graphics Tools optional feature.");
+            }
         }
 
 #ifndef RELEASE
