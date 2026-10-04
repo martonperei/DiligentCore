@@ -50,7 +50,8 @@ public:
         Desc.Type = FENCE_TYPE_CPU_WAIT_ONLY;
         pDevice->CreateFence(Desc, &m_pFence);
 
-        DEV_CHECK_ERR(m_pFence, "Failed to create fence");
+        if (!m_pFence)
+            LOG_ERROR_AND_THROW("Failed to create GPU completion queue fence");
     }
 
     // clang-format off

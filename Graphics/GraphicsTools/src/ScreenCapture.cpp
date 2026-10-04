@@ -36,6 +36,8 @@ ScreenCapture::ScreenCapture(IRenderDevice* pDevice) :
     FenceDesc fenceDesc;
     fenceDesc.Name = "Screen capture fence";
     m_pDevice->CreateFence(fenceDesc, &m_pFence);
+    if (!m_pFence)
+        LOG_ERROR_AND_THROW("Failed to create screen capture fence");
 }
 
 void ScreenCapture::Capture(ISwapChain* pSwapChain, IDeviceContext* pContext, Uint32 FrameId)
@@ -73,6 +75,8 @@ void ScreenCapture::Capture(ISwapChain* pSwapChain, IDeviceContext* pContext, Ui
         TexDesc.Usage          = USAGE_STAGING;
         TexDesc.CPUAccessFlags = CPU_ACCESS_READ;
         m_pDevice->CreateTexture(TexDesc, nullptr, &pStagingTexture);
+        if (!pStagingTexture)
+            LOG_ERROR_AND_THROW("Failed to create screen capture staging texture");
     }
 
     CopyTextureAttribs CopyAttribs(pCurrentBackBuffer, RESOURCE_STATE_TRANSITION_MODE_TRANSITION, pStagingTexture, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
