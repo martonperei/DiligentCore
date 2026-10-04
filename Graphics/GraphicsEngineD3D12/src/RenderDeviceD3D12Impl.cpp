@@ -65,6 +65,25 @@ namespace Diligent
 namespace
 {
 
+#ifdef __ID3D12InfoQueue1_INTERFACE_DEFINED__
+void __stdcall D3D12DebugMessageCallback(D3D12_MESSAGE_CATEGORY /*Category*/,
+                                         D3D12_MESSAGE_SEVERITY Severity,
+                                         D3D12_MESSAGE_ID       ID,
+                                         LPCSTR                 pDescription,
+                                         void* /*pContext*/)
+{
+    DEBUG_MESSAGE_SEVERITY MsgSeverity = DEBUG_MESSAGE_SEVERITY_INFO;
+    switch (Severity)
+    {
+        case D3D12_MESSAGE_SEVERITY_CORRUPTION: MsgSeverity = DEBUG_MESSAGE_SEVERITY_FATAL_ERROR; break;
+        case D3D12_MESSAGE_SEVERITY_ERROR: MsgSeverity = DEBUG_MESSAGE_SEVERITY_ERROR; break;
+        case D3D12_MESSAGE_SEVERITY_WARNING: MsgSeverity = DEBUG_MESSAGE_SEVERITY_WARNING; break;
+        default: MsgSeverity = DEBUG_MESSAGE_SEVERITY_INFO; break;
+    }
+    LOG_DEBUG_MESSAGE(MsgSeverity, "D3D12 debug message (ID ", static_cast<int>(ID), "): ", pDescription);
+}
+#endif
+
 D3D_FEATURE_LEVEL GetD3DFeatureLevelFromDevice(ID3D12Device* pd3d12Device)
 {
     D3D_FEATURE_LEVEL FeatureLevels[] =
@@ -123,6 +142,44 @@ CComPtr<ID3D12Heap> CreateDummyNVApiHeap(ID3D12Device* pd3d12Device)
 
 } // namespace
 
+// Keep the callback registered until device-owned resources have been released. Member ownership
+// also unregisters it when device construction throws after registration.
+struct RenderDeviceD3D12Impl::DebugMessageRegistration
+{
+    explicit DebugMessageRegistration(ID3D12Device* pDevice)
+    {
+#ifdef __ID3D12InfoQueue1_INTERFACE_DEFINED__
+        HRESULT hr = pDevice->QueryInterface(__uuidof(ID3D12InfoQueue1), reinterpret_cast<void**>(&pInfoQueue));
+        if (FAILED(hr))
+        {
+            LOG_WARNING_MESSAGE("D3D12 debug layer messages are not available: ID3D12InfoQueue1 is not supported.");
+            return;
+        }
+        hr         = pInfoQueue->RegisterMessageCallback(D3D12DebugMessageCallback, D3D12_MESSAGE_CALLBACK_FLAG_NONE, nullptr, &Cookie);
+        Registered = SUCCEEDED(hr);
+        if (!Registered)
+            LOG_WARNING_MESSAGE("D3D12 debug layer messages are not available: RegisterMessageCallback failed with HRESULT 0x", std::hex, static_cast<Uint32>(hr), std::dec, ".");
+#else
+        (void)pDevice;
+        LOG_WARNING_MESSAGE("D3D12 debug layer messages are not available: this Windows SDK does not provide ID3D12InfoQueue1.");
+#endif
+    }
+
+    ~DebugMessageRegistration()
+    {
+#ifdef __ID3D12InfoQueue1_INTERFACE_DEFINED__
+        if (Registered)
+            pInfoQueue->UnregisterMessageCallback(Cookie);
+#endif
+    }
+
+#ifdef __ID3D12InfoQueue1_INTERFACE_DEFINED__
+    CComPtr<ID3D12InfoQueue1> pInfoQueue;
+    DWORD                     Cookie     = 0;
+    bool                      Registered = false;
+#endif
+};
+
 RenderDeviceD3D12Impl::RenderDeviceD3D12Impl(IReferenceCounters*          pRefCounters,
                                              IMemoryAllocator&            RawMemAllocator,
                                              IEngineFactory*              pEngineFactory,
@@ -154,6 +211,7 @@ RenderDeviceD3D12Impl::RenderDeviceD3D12Impl(IReferenceCounters*          pRefCo
         }(EngineCI),
     },
     m_pd3d12Device{pd3d12Device},
+    m_DebugMessageRegistration{EngineCI.EnableValidation ? std::make_unique<DebugMessageRegistration>(pd3d12Device) : nullptr},
     m_CPUDescriptorHeaps
     {
         {RawMemAllocator, *this, EngineCI.CPUDescriptorHeapAllocationSize[0], D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, D3D12_DESCRIPTOR_HEAP_FLAG_NONE},

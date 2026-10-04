@@ -281,24 +281,7 @@ RefCntAutoPtr<CommandQueueD3D12Impl> CreateCommandQueueD3D12(ID3D12Device*      
     return RefCntAutoPtr<CommandQueueD3D12Impl>{NEW_RC_OBJ(GetRawAllocator(), "CommandQueueD3D12 instance", CommandQueueD3D12Impl)(pd3d12Queue, pd3d12Fence)};
 }
 
-#ifdef __ID3D12InfoQueue1_INTERFACE_DEFINED__
-void __stdcall D3D12DebugMessageCallback(D3D12_MESSAGE_CATEGORY /*Category*/,
-                                         D3D12_MESSAGE_SEVERITY Severity,
-                                         D3D12_MESSAGE_ID       ID,
-                                         LPCSTR                 pDescription,
-                                         void* /*pContext*/)
-{
-    DEBUG_MESSAGE_SEVERITY MsgSeverity = DEBUG_MESSAGE_SEVERITY_INFO;
-    switch (Severity)
-    {
-        case D3D12_MESSAGE_SEVERITY_CORRUPTION: MsgSeverity = DEBUG_MESSAGE_SEVERITY_FATAL_ERROR; break;
-        case D3D12_MESSAGE_SEVERITY_ERROR: MsgSeverity = DEBUG_MESSAGE_SEVERITY_ERROR; break;
-        case D3D12_MESSAGE_SEVERITY_WARNING: MsgSeverity = DEBUG_MESSAGE_SEVERITY_WARNING; break;
-        default: MsgSeverity = DEBUG_MESSAGE_SEVERITY_INFO; break;
-    }
-    LOG_DEBUG_MESSAGE(MsgSeverity, "D3D12 debug message (ID ", static_cast<int>(ID), "): ", pDescription);
-}
-#endif
+
 
 } // namespace
 
@@ -480,20 +463,6 @@ void EngineFactoryD3D12Impl::CreateDeviceAndContextsD3D12(const EngineD3D12Creat
                     hr = pInfoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_ERROR, true);
                     VERIFY(SUCCEEDED(hr), "Failed to set break on error");
                 }
-
-                // Without a callback, the messages stay in the info queue, where only a debugger reads them.
-                bool MessagesLogged = false;
-#ifdef __ID3D12InfoQueue1_INTERFACE_DEFINED__
-                CComPtr<ID3D12InfoQueue1> pInfoQueue1;
-                if (SUCCEEDED(pInfoQueue.QueryInterface(&pInfoQueue1)))
-                {
-                    DWORD CallbackCookie = 0;
-                    hr                   = pInfoQueue1->RegisterMessageCallback(D3D12DebugMessageCallback, D3D12_MESSAGE_CALLBACK_FLAG_NONE, nullptr, &CallbackCookie);
-                    MessagesLogged       = SUCCEEDED(hr);
-                }
-#endif
-                if (!MessagesLogged)
-                    LOG_WARNING_MESSAGE("D3D12 debug layer messages are not available: the layer does not support ID3D12InfoQueue1, so they only reach a debugger.");
             }
             else
             {
