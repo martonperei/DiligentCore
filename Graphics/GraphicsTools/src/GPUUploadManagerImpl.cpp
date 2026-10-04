@@ -354,7 +354,7 @@ GPUUploadManagerImpl::Page::Writer::~Writer()
 }
 
 
-GPUUploadManagerImpl::Page::StagingTextureAtlas::StagingTextureAtlas(IRenderDevice* pDevice, Uint32 Width, Uint32 Height, TEXTURE_FORMAT Format, const std::string& Name) :
+GPUUploadManagerImpl::Page::StagingTextureAtlas::StagingTextureAtlas(IRenderDevice* pDevice, Uint32 Width, Uint32 Height, TEXTURE_FORMAT Format, Uint64 ImmediateContextMask, const std::string& Name) :
     Mgr{Width, Height}
 {
     TextureDesc TexDesc;
@@ -365,6 +365,8 @@ GPUUploadManagerImpl::Page::StagingTextureAtlas::StagingTextureAtlas(IRenderDevi
     TexDesc.Height         = Height;
     TexDesc.Usage          = USAGE_STAGING;
     TexDesc.CPUAccessFlags = CPU_ACCESS_WRITE;
+
+    TexDesc.ImmediateContextMask = ImmediateContextMask;
 
     pDevice->CreateTexture(TexDesc, nullptr, &pTex);
     if (!pTex)
@@ -425,7 +427,7 @@ inline bool PersistentMapSupported(IRenderDevice* pDevice)
 
 std::atomic<Uint32> GPUUploadManagerImpl::Page::sm_PageCounter{0};
 
-GPUUploadManagerImpl::Page::Page(UploadStream* pStream, IRenderDevice* pDevice, Uint32 Size) :
+GPUUploadManagerImpl::Page::Page(UploadStream* pStream, IRenderDevice* pDevice, Uint32 Size, Uint64 ImmediateContextMask) :
     m_pStream{pStream},
     m_Size{Size},
     m_PersistentMapped{PersistentMapSupported(pDevice)}
@@ -439,6 +441,8 @@ GPUUploadManagerImpl::Page::Page(UploadStream* pStream, IRenderDevice* pDevice, 
     Desc.Size           = Size;
     Desc.Usage          = USAGE_STAGING;
     Desc.CPUAccessFlags = CPU_ACCESS_WRITE;
+
+    Desc.ImmediateContextMask = ImmediateContextMask;
     pDevice->CreateBuffer(Desc, nullptr, &m_pStagingBuffer);
     if (!m_pStagingBuffer)
     {
@@ -446,7 +450,7 @@ GPUUploadManagerImpl::Page::Page(UploadStream* pStream, IRenderDevice* pDevice, 
     }
 }
 
-GPUUploadManagerImpl::Page::Page(UploadStream* pStream, IRenderDevice* pDevice, Uint32 Size, TEXTURE_FORMAT Format) :
+GPUUploadManagerImpl::Page::Page(UploadStream* pStream, IRenderDevice* pDevice, Uint32 Size, TEXTURE_FORMAT Format, Uint64 ImmediateContextMask) :
     m_pStream{pStream},
     m_Size{Size},
     m_PersistentMapped{PersistentMapSupported(pDevice)},
@@ -456,6 +460,7 @@ GPUUploadManagerImpl::Page::Page(UploadStream* pStream, IRenderDevice* pDevice, 
             Size,
             Size,
             Format,
+            ImmediateContextMask,
             std::string{"GPUUploadManagerImpl page "} + std::to_string(sm_PageCounter.fetch_add(1)) +
                 " (" + GetTextureFormatAttribs(Format).Name + ' ' + std::to_string(Size) + 'x' + std::to_string(Size) + ')'),
     }
@@ -1150,9 +1155,13 @@ GPUUploadManagerImpl::GPUUploadManagerImpl(IReferenceCounters* pRefCounters, con
     m_pDevice{CI.pDevice},
     m_pContext{CI.pContext},
     m_DeviceType{CI.pDevice->GetDeviceInfo().Type},
+    m_ImmediateContextMask{CI.ImmediateContextMask},
     m_TextureUpdateOffsetAlignment{m_pDevice->GetAdapterInfo().Buffer.TextureUpdateOffsetAlignment},
     m_TextureUpdateStrideAlignment{m_pDevice->GetAdapterInfo().Buffer.TextureUpdateStrideAlignment}
 {
+    if (CI.pContext != nullptr && !SetOrValidateContext(CI.pContext, "CreateGPUUploadManager"))
+        LOG_ERROR_AND_THROW("Invalid GPU upload manager context");
+
     const Uint32 PageSize = CI.PageSize != 0 ? CI.PageSize : GPUUploadManagerCreateInfo{}.PageSize;
     if (CI.PageSize == 0)
         LOG_ERROR_MESSAGE("GPUUploadManagerCreateInfo::PageSize must not be zero; using the default value ", PageSize);
@@ -1284,6 +1293,14 @@ bool GPUUploadManagerImpl::SetOrValidateContext(IDeviceContext* pContext, const 
     if (pContext == nullptr)
     {
         LOG_ERROR_MESSAGE("A valid context must be provided to ", MethodName, "()");
+        return false;
+    }
+
+    const DeviceContextDesc& Desc = pContext->GetDesc();
+    if (Desc.IsDeferred || Desc.ContextId >= 64 || (m_ImmediateContextMask & (Uint64{1} << Desc.ContextId)) == 0)
+    {
+        LOG_ERROR_MESSAGE("The immediate context provided to ", MethodName,
+                          "() must be included in GPUUploadManagerCreateInfo::ImmediateContextMask");
         return false;
     }
 
@@ -1650,8 +1667,8 @@ GPUUploadManagerImpl::Page* GPUUploadManagerImpl::UploadStream::CreatePage(IDevi
     }
 
     std::unique_ptr<Page> NewPage = m_Format != TEX_FORMAT_UNKNOWN ?
-        std::make_unique<Page>(this, m_Mgr.m_pDevice, PageSize, m_Format) :
-        std::make_unique<Page>(this, m_Mgr.m_pDevice, PageSize);
+        std::make_unique<Page>(this, m_Mgr.m_pDevice, PageSize, m_Format, m_Mgr.m_ImmediateContextMask) :
+        std::make_unique<Page>(this, m_Mgr.m_pDevice, PageSize, m_Mgr.m_ImmediateContextMask);
 
     if (!NewPage->IsValid())
         return nullptr;
