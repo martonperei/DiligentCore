@@ -462,6 +462,22 @@ void CommandContext::TransitionResource(TopLevelASD3D12Impl& TLAS, const StateTr
     Helper(TLAS);
 }
 
+bool CommandContext::HasPendingTransition(const D3D12_RESOURCE_TRANSITION_BARRIER& Transition) const
+{
+    for (const D3D12_RESOURCE_BARRIER& Pending : m_PendingResourceBarriers)
+    {
+        if (Pending.Type != D3D12_RESOURCE_BARRIER_TYPE_TRANSITION ||
+            Pending.Transition.pResource != Transition.pResource)
+            continue;
+
+        if (Pending.Transition.Subresource == D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES ||
+            Transition.Subresource == D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES ||
+            Pending.Transition.Subresource == Transition.Subresource)
+            return true;
+    }
+    return false;
+}
+
 void CommandContext::InsertAliasBarrier(D3D12ResourceBase& Before, D3D12ResourceBase& After, bool FlushImmediate)
 {
     m_PendingResourceBarriers.emplace_back();
