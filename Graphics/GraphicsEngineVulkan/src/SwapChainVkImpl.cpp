@@ -342,10 +342,10 @@ void SwapChainVkImpl::CreateVulkanSwapChain()
         }
         else
         {
-            // Immediate presents without waiting for VSync, as D3D11 and D3D12 do with sync interval 0.
-            // Mailbox does not tear, but some drivers pace it to the display refresh rate.
-            PreferredPresentModes.push_back(VK_PRESENT_MODE_IMMEDIATE_KHR);
-            PreferredPresentModes.push_back(VK_PRESENT_MODE_MAILBOX_KHR);
+            // Mailbox avoids tearing. Applications may prefer immediate presentation to avoid
+            // display pacing on implementations that throttle mailbox acquisition.
+            PreferredPresentModes.push_back(m_SwapChainDesc.PreferImmediatePresent ? VK_PRESENT_MODE_IMMEDIATE_KHR : VK_PRESENT_MODE_MAILBOX_KHR);
+            PreferredPresentModes.push_back(m_SwapChainDesc.PreferImmediatePresent ? VK_PRESENT_MODE_MAILBOX_KHR : VK_PRESENT_MODE_IMMEDIATE_KHR);
             PreferredPresentModes.push_back(VK_PRESENT_MODE_FIFO_KHR);
         }
 
