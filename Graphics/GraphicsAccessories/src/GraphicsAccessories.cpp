@@ -2421,7 +2421,7 @@ Uint64 GetStagingTextureLocationOffset(const TextureDesc& TexDesc,
         for (Uint32 mip = 0; mip < TexDesc.MipLevels; ++mip)
         {
             MipLevelProperties MipInfo = GetMipLevelProperties(TexDesc, mip);
-            ArraySliceSize += AlignUp(MipInfo.MipSize, Alignment);
+            ArraySliceSize += AlignUpNonPw2(MipInfo.MipSize, Alignment);
         }
 
         Offset = ArraySliceSize;
@@ -2432,7 +2432,7 @@ Uint64 GetStagingTextureLocationOffset(const TextureDesc& TexDesc,
     for (Uint32 mip = 0; mip < MipLevel; ++mip)
     {
         MipLevelProperties MipInfo = GetMipLevelProperties(TexDesc, mip);
-        Offset += AlignUp(MipInfo.MipSize, Alignment);
+        Offset += AlignUpNonPw2(MipInfo.MipSize, Alignment);
     }
 
     if (ArraySlice == TexDesc.GetArraySize())
@@ -2495,8 +2495,8 @@ BufferToTextureCopyInfo GetBufferToTextureCopyInfo(TEXTURE_FORMAT Format,
         CopyInfo.RowCount = UpdateRegionHeight;
     }
 
-    VERIFY_EXPR(IsPowerOfTwo(RowStrideAlignment));
-    CopyInfo.RowStride = AlignUp(CopyInfo.RowSize, RowStrideAlignment);
+    VERIFY_EXPR(RowStrideAlignment > 0);
+    CopyInfo.RowStride = AlignUpNonPw2(CopyInfo.RowSize, RowStrideAlignment);
     if (FmtAttribs.ComponentType == COMPONENT_TYPE_COMPRESSED)
     {
         CopyInfo.RowStrideInTexels = StaticCast<Uint32>(CopyInfo.RowStride / Uint64{FmtAttribs.ComponentSize} * Uint64{FmtAttribs.BlockWidth});

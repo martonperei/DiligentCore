@@ -1585,11 +1585,14 @@ bool GPUUploadManagerImpl::ScheduleTextureUpdate(const ScheduleTextureUpdateInfo
         const BufferToTextureCopyInfo    CopyInfo;
         const Uint32                     OffsetAlignment;
     };
+    Uint32 RowAlignment = std::max(m_TextureUpdateStrideAlignment, 4u);
+    if (m_DeviceType == RENDER_DEVICE_TYPE_VULKAN)
+        RowAlignment = std::lcm(RowAlignment, GetTextureFormatAttribs(Format).GetElementSize());
     ScheduleUpdateData UpdateData{
         UpdateInfo,
         // UpdateTexture() requires the row and depth strides to be multiples of 4 bytes.
         !UseD3D11TextureCallback ?
-            GetBufferToTextureCopyInfo(Format, UpdateInfo.DstBox, std::max(m_TextureUpdateStrideAlignment, 4u)) :
+            GetBufferToTextureCopyInfo(Format, UpdateInfo.DstBox, RowAlignment) :
             BufferToTextureCopyInfo{},
         // The source offset of a buffer-to-texture copy must be a multiple of the texel block size
         // (Vulkan requires it explicitly), which is 12 bytes for RGB32 formats.

@@ -27,6 +27,8 @@
 
 #include "pch.h"
 #include "TextureVkImpl.hpp"
+
+#include <numeric>
 #include "RenderDeviceVkImpl.hpp"
 #include "DeviceContextVkImpl.hpp"
 #include "TextureViewVkImpl.hpp"
@@ -581,6 +583,11 @@ void TextureVkImpl::InitializeContentOnDevice(const TextureData&          InitDa
     GetDevice()->SafeReleaseDeviceObject(std::move(StagingMemoryAllocation), Uint64{1} << Uint64{CmdQueueInd});
 }
 
+Uint32 TextureVkImpl::GetStagingBufferOffsetAlignment() const
+{
+    return std::lcm(16u, GetTextureFormatAttribs(m_Desc.Format).GetElementSize());
+}
+
 void TextureVkImpl::CreateStagingTexture(const TextureData* pInitData, const TextureFormatAttribs& FmtAttribs)
 {
     const bool                            bInitializeTexture = (pInitData != nullptr && pInitData->pSubResources != nullptr && pInitData->NumSubresources > 0);
@@ -591,13 +598,7 @@ void TextureVkImpl::CreateStagingTexture(const TextureData* pInitData, const Tex
     VkStagingBuffCI.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
     VkStagingBuffCI.pNext = nullptr;
     VkStagingBuffCI.flags = 0;
-    VkStagingBuffCI.size  = GetStagingTextureDataSize(m_Desc, StagingBufferOffsetAlignment);
-
-    // Copies between the staging buffer and a texture require each subresource's offset to be a multiple
-    // of the format's texel block size. StagingBufferOffsetAlignment is not a multiple of the 12-byte texels of RGB32 formats.
-    DEV_CHECK_ERR(StagingBufferOffsetAlignment % FmtAttribs.GetElementSize() == 0,
-                  "Staging textures of format ", FmtAttribs.Name, " are not supported: their ", FmtAttribs.GetElementSize(),
-                  "-byte texels do not divide the ", StagingBufferOffsetAlignment, "-byte subresource alignment.");
+    VkStagingBuffCI.size  = GetStagingTextureDataSize(m_Desc, GetStagingBufferOffsetAlignment());
 
     // clang-format off
         DEV_CHECK_ERR((m_Desc.CPUAccessFlags & (CPU_ACCESS_READ | CPU_ACCESS_WRITE)) == CPU_ACCESS_READ ||
@@ -669,7 +670,7 @@ void TextureVkImpl::CreateStagingTexture(const TextureData* pInitData, const Tex
                 const MipLevelProperties MipProps   = GetMipLevelProperties(m_Desc, mip);
 
                 const Uint64 DstSubresOffset =
-                    GetStagingTextureSubresourceOffset(m_Desc, layer, mip, StagingBufferOffsetAlignment);
+                    GetStagingTextureSubresourceOffset(m_Desc, layer, mip, GetStagingBufferOffsetAlignment());
 
                 CopyTextureSubresource(SubResData,
                                        MipProps.StorageHeight / FmtAttribs.BlockHeight, // NumRows

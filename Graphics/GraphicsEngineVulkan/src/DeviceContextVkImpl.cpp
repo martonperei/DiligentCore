@@ -2472,9 +2472,12 @@ void DeviceContextVkImpl::UpdateTexture(ITexture*                      pTexture,
 
         // vkCmdCopyBufferToImage takes the row stride in texels, so a stride that does not hold a whole number
         // of texels (blocks) is truncated below and the copy shears.
-        DEV_CHECK_ERR(SubresData.Stride % FmtAttribs.GetElementSize() == 0,
-                      "Source buffer stride (", SubresData.Stride, ") is not a multiple of the ", FmtAttribs.GetElementSize(),
-                      "-byte elements of format ", FmtAttribs.Name, ".");
+        if (SubresData.Stride % FmtAttribs.GetElementSize() != 0)
+        {
+            LOG_ERROR_MESSAGE("Source buffer stride (", SubresData.Stride, ") is not a multiple of the ", FmtAttribs.GetElementSize(),
+                              "-byte elements of format ", FmtAttribs.Name, ".");
+            return;
+        }
 
         const Uint32 SrcBufferRowStrideInTexels = (FmtAttribs.ComponentType == COMPONENT_TYPE_COMPRESSED) ?
             StaticCast<Uint32>(SubresData.Stride / Uint64{FmtAttribs.ComponentSize} * Uint64{FmtAttribs.BlockWidth}) :
@@ -2572,7 +2575,7 @@ void DeviceContextVkImpl::CopyTexture(const CopyTextureAttribs& CopyAttribs)
 
         const Uint64 SrcBufferOffset =
             GetStagingTextureLocationOffset(SrcTexDesc, CopyAttribs.SrcSlice, CopyAttribs.SrcMipLevel,
-                                            TextureVkImpl::StagingBufferOffsetAlignment,
+                                            pSrcTexVk->GetStagingBufferOffsetAlignment(),
                                             pSrcBox->MinX, pSrcBox->MinY, pSrcBox->MinZ);
         const MipLevelProperties SrcMipLevelAttribs = GetMipLevelProperties(SrcTexDesc, CopyAttribs.SrcMipLevel);
 
@@ -2602,7 +2605,7 @@ void DeviceContextVkImpl::CopyTexture(const CopyTextureAttribs& CopyAttribs)
         // address of (x,y,z) = region->bufferOffset + (((z * imageHeight) + y) * rowLength + x) * texelBlockSize; (18.4.1)
         const Uint64 DstBufferOffset =
             GetStagingTextureLocationOffset(DstTexDesc, CopyAttribs.DstSlice, CopyAttribs.DstMipLevel,
-                                            TextureVkImpl::StagingBufferOffsetAlignment,
+                                            pDstTexVk->GetStagingBufferOffsetAlignment(),
                                             CopyAttribs.DstX, CopyAttribs.DstY, CopyAttribs.DstZ);
         const MipLevelProperties DstMipLevelAttribs = GetMipLevelProperties(DstTexDesc, CopyAttribs.DstMipLevel);
 
@@ -2667,17 +2670,8 @@ void DeviceContextVkImpl::UpdateTextureRegion(const void*                    pSr
 
     const TextureFormatAttribs&   FmtAttribs        = GetTextureFormatAttribs(TexDesc.Format);
     const VkPhysicalDeviceLimits& DeviceLimits      = m_pDevice->GetPhysicalDevice().GetProperties().limits;
-    const BufferToTextureCopyInfo CopyInfo          = GetBufferToTextureCopyInfo(TexDesc.Format, DstBox, static_cast<Uint32>(DeviceLimits.optimalBufferCopyRowPitchAlignment));
+    const BufferToTextureCopyInfo CopyInfo          = GetBufferToTextureCopyInfo(TexDesc.Format, DstBox, std::lcm(static_cast<Uint32>(DeviceLimits.optimalBufferCopyRowPitchAlignment), FmtAttribs.GetElementSize()));
     const Uint32                  UpdateRegionDepth = CopyInfo.Region.Depth();
-
-    // vkCmdCopyBufferToImage takes the row stride in texels, so the aligned row stride must hold a whole number
-    // of texels (blocks), or CopyInfo.RowStrideInTexels is truncated and the copy shears. That holds for every
-    // width only when one of the element size and the alignment divides the other, which the 12-byte texels of
-    // RGB32 formats break for alignments above 4.
-    DEV_CHECK_ERR(DeviceLimits.optimalBufferCopyRowPitchAlignment % FmtAttribs.GetElementSize() == 0 ||
-                      FmtAttribs.GetElementSize() % DeviceLimits.optimalBufferCopyRowPitchAlignment == 0,
-                  "Updating textures of format ", FmtAttribs.Name, " is not supported: their ", FmtAttribs.GetElementSize(),
-                  "-byte texels do not fit the ", DeviceLimits.optimalBufferCopyRowPitchAlignment, "-byte row pitch alignment.");
 
     // For UpdateTextureRegion(), use UploadHeap, not dynamic heap
     const VkDeviceSize     BufferOffsetAlignment = GetBufferToImageCopyOffsetAlignment(DeviceLimits, FmtAttribs);
@@ -2876,12 +2870,7 @@ void DeviceContextVkImpl::MapTextureSubresource(ITexture*                 pTextu
             LOG_INFO_MESSAGE_ONCE("Mapping textures with flags MAP_FLAG_DISCARD or MAP_FLAG_NO_OVERWRITE has no effect in Vulkan backend");
 
         const VkPhysicalDeviceLimits& DeviceLimits  = m_pDevice->GetPhysicalDevice().GetProperties().limits;
-        const BufferToTextureCopyInfo CopyInfo      = GetBufferToTextureCopyInfo(TexDesc.Format, *pMapRegion, static_cast<Uint32>(DeviceLimits.optimalBufferCopyRowPitchAlignment));
-        // The aligned row stride must hold a whole number of texels (blocks), as in UpdateTextureRegion().
-        DEV_CHECK_ERR(DeviceLimits.optimalBufferCopyRowPitchAlignment % FmtAttribs.GetElementSize() == 0 ||
-                          FmtAttribs.GetElementSize() % DeviceLimits.optimalBufferCopyRowPitchAlignment == 0,
-                      "Mapping textures of format ", FmtAttribs.Name, " is not supported: their ", FmtAttribs.GetElementSize(),
-                      "-byte texels do not fit the ", DeviceLimits.optimalBufferCopyRowPitchAlignment, "-byte row pitch alignment.");
+        const BufferToTextureCopyInfo CopyInfo      = GetBufferToTextureCopyInfo(TexDesc.Format, *pMapRegion, std::lcm(static_cast<Uint32>(DeviceLimits.optimalBufferCopyRowPitchAlignment), FmtAttribs.GetElementSize()));
         const VkDeviceSize            Alignment     = GetBufferToImageCopyOffsetAlignment(DeviceLimits, FmtAttribs);
         const VkDeviceSize            HeapAlignment = Alignment & (~Alignment + 1);
         if (VulkanDynamicAllocation Allocation = AllocateDynamicSpace(CopyInfo.MemorySize + Alignment - HeapAlignment, static_cast<Uint32>(HeapAlignment)))
@@ -2900,7 +2889,7 @@ void DeviceContextVkImpl::MapTextureSubresource(ITexture*                 pTextu
     else if (TexDesc.Usage == USAGE_STAGING)
     {
         Uint64 SubresourceOffset =
-            GetStagingTextureSubresourceOffset(TexDesc, ArraySlice, MipLevel, TextureVkImpl::StagingBufferOffsetAlignment);
+            GetStagingTextureSubresourceOffset(TexDesc, ArraySlice, MipLevel, TextureVk.GetStagingBufferOffsetAlignment());
         const MipLevelProperties MipLevelAttribs = GetMipLevelProperties(TexDesc, MipLevel);
         // address of (x,y,z) = region->bufferOffset + (((z * imageHeight) + y) * rowLength + x) * texelBlockSize; (18.4.1)
         Uint64 MapStartOffset = SubresourceOffset +
