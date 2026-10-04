@@ -106,6 +106,9 @@ DeviceContextVkImpl::DeviceContextVkImpl(IReferenceCounters*      pRefCounters,
         m_pQueryMgr = &pDeviceVkImpl->GetQueryMgr(GetCommandQueueId());
         EnsureVkCmdBuffer();
         m_State.NumCommands += m_pQueryMgr->ResetStaleQueries(m_pDevice->GetLogicalDevice(), m_CommandBuffer);
+        // Submit the command buffer now, so that a context that records nothing else
+        // does not hold outstanding commands until the application flushes it.
+        Flush();
     }
 
     BufferDesc DummyVBDesc;
