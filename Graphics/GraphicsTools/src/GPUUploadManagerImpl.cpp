@@ -34,6 +34,7 @@
 #include <cstring>
 #include <thread>
 #include <algorithm>
+#include <numeric>
 
 namespace Diligent
 {
@@ -585,15 +586,16 @@ void GPUUploadManagerImpl::Page::Seal()
 
 Uint32 GPUUploadManagerImpl::Page::Allocate(Uint32 NumBytes, Uint32 Alignment)
 {
-    const Uint32 AlignedSize = AlignUp(NumBytes, Alignment);
+    // Texture updates may require an alignment that is not a power of two (see ScheduleTextureUpdate()).
+    // Align the start only: page selection reserves NumBytes, and the next allocation aligns its own start.
     for (;;)
     {
         Uint32 Offset        = m_Offset.load(std::memory_order_acquire);
-        Uint32 AlignedOffset = AlignUp(Offset, Alignment);
-        if (AlignedOffset + AlignedSize > m_Size)
+        Uint32 AlignedOffset = AlignUpNonPw2(Offset, Alignment);
+        if (AlignedOffset > m_Size || NumBytes > m_Size - AlignedOffset)
             return ~0u; // Fail without incrementing offset
 
-        if (m_Offset.compare_exchange_weak(Offset, AlignedOffset + AlignedSize, std::memory_order_acq_rel))
+        if (m_Offset.compare_exchange_weak(Offset, AlignedOffset + NumBytes, std::memory_order_acq_rel))
             return AlignedOffset; // Success
     }
 }
@@ -670,7 +672,7 @@ bool GPUUploadManagerImpl::Page::ScheduleTextureUpdate(const ScheduleTextureUpda
         size_t DstRowSize     = 0;
         if (m_pStagingBuffer)
         {
-            Offset = Allocate(static_cast<Uint32>(CopyInfo.MemorySize), std::max(kMinimumOffsetAlignment, OffsetAlignment));
+            Offset = Allocate(static_cast<Uint32>(CopyInfo.MemorySize), std::lcm(kMinimumOffsetAlignment, std::max(OffsetAlignment, 1u)));
             if (Offset == ~0u)
             {
                 return false;
@@ -1583,13 +1585,19 @@ bool GPUUploadManagerImpl::ScheduleTextureUpdate(const ScheduleTextureUpdateInfo
         const BufferToTextureCopyInfo    CopyInfo;
         const Uint32                     OffsetAlignment;
     };
+    Uint32 RowAlignment = std::max(m_TextureUpdateStrideAlignment, 4u);
+    if (m_DeviceType == RENDER_DEVICE_TYPE_VULKAN)
+        RowAlignment = std::lcm(RowAlignment, GetTextureFormatAttribs(Format).GetElementSize());
     ScheduleUpdateData UpdateData{
         UpdateInfo,
+        // UpdateTexture() requires the row and depth strides to be multiples of 4 bytes.
         !UseD3D11TextureCallback ?
-            GetBufferToTextureCopyInfo(Format, UpdateInfo.DstBox, m_TextureUpdateStrideAlignment) :
+            GetBufferToTextureCopyInfo(Format, UpdateInfo.DstBox, RowAlignment) :
             BufferToTextureCopyInfo{},
+        // The source offset of a buffer-to-texture copy must be a multiple of the texel block size
+        // (Vulkan requires it explicitly), which is 12 bytes for RGB32 formats.
         !UseD3D11TextureCallback ?
-            m_TextureUpdateOffsetAlignment :
+            std::lcm(std::max(m_TextureUpdateOffsetAlignment, 1u), GetTextureFormatAttribs(Format).GetElementSize()) :
             0,
     };
 
