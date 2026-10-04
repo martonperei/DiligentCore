@@ -96,7 +96,7 @@ public:
     // For depth-stencil format buffer, the offset must be a multiple of 4.
     // If command buffer does not support graphics or compute commands, then the buffer offset must be a multiple of 4.
     // ("Copying Data Between Buffers and Images")
-    static constexpr Uint32 StagingBufferOffsetAlignment = 16; // max texel size - 16 bytes (RGBA32F), max texel block size - 16 bytes.
+    Uint32 GetStagingBufferOffsetAlignment() const;
 
 protected:
     void CreateViewInternal(const struct TextureViewDesc& ViewDesc, ITextureView** ppView, bool bIsDefaultView) override;

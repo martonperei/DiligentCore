@@ -785,6 +785,8 @@ struct BufferToTextureCopyInfo
     /// Texture region
     Box Region;
 };
+// RowStrideAlignment must be positive and need not be a power of two. Callers that use
+// RowStrideInTexels must choose an alignment compatible with the format's texel block size.
 BufferToTextureCopyInfo GetBufferToTextureCopyInfo(TEXTURE_FORMAT Format,
                                                    const Box&     Region,
                                                    Uint32         RowStrideAlignment);
