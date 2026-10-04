@@ -535,6 +535,7 @@ private:
     std::vector<MappedBuffer> m_MappedBuffers;
 
     Int32 m_ActiveQueriesCounter = 0;
+    Int32 m_ActiveDurationQueriesCounter = 0;
 
     std::vector<OptimizedClearValue> m_AttachmentClearValues;
 

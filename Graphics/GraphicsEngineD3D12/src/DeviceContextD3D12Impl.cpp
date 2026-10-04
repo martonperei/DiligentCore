@@ -1025,8 +1025,10 @@ void DeviceContextD3D12Impl::Flush(bool                 RequestNewCmdCtx,
 {
     VERIFY(!IsDeferred() || NumCommandLists == 0 && ppCommandLists == nullptr, "Only immediate context can execute command lists");
 
-    DEV_CHECK_ERR(m_ActiveQueriesCounter == 0,
-                  "Flushing device context that has ", m_ActiveQueriesCounter,
+    // Duration queries resolve independent timestamps at each endpoint and may span submissions.
+    // They remain active for FinishFrame(), which still requires every query to be ended.
+    DEV_CHECK_ERR(m_ActiveQueriesCounter == m_ActiveDurationQueriesCounter,
+                  "Flushing device context that has ", m_ActiveQueriesCounter - m_ActiveDurationQueriesCounter,
                   " active queries. Direct3D12 requires that queries are begun and ended in the same command list");
 
     // TODO: use small_vector
@@ -2552,6 +2554,8 @@ void DeviceContextD3D12Impl::BeginQuery(IQuery* pQuery)
     const QUERY_TYPE QueryType       = pQueryD3D12Impl->GetDesc().Type;
     if (QueryType != QUERY_TYPE_TIMESTAMP)
         ++m_ActiveQueriesCounter;
+    if (QueryType == QUERY_TYPE_DURATION)
+        ++m_ActiveDurationQueriesCounter;
 
     QueryManagerD3D12& QueryMgr = GetQueryManager();
     CommandContext&    Ctx      = GetCmdContext();
@@ -2573,6 +2577,8 @@ void DeviceContextD3D12Impl::EndQuery(IQuery* pQuery)
         VERIFY(m_ActiveQueriesCounter > 0, "Active query counter is 0 which means there was a mismatch between BeginQuery() / EndQuery() calls");
         --m_ActiveQueriesCounter;
     }
+    if (QueryType == QUERY_TYPE_DURATION)
+        --m_ActiveDurationQueriesCounter;
 
     QueryManagerD3D12& QueryMgr = GetQueryManager();
     CommandContext&    Ctx      = GetCmdContext();
