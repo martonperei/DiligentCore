@@ -2470,6 +2470,15 @@ void DeviceContextVkImpl::UpdateTexture(ITexture*                      pTexture,
         // state mismatch error will occur.
         UnbindTextureFromFramebuffer(pTexVk, true);
 
+        // vkCmdCopyBufferToImage takes the row stride in texels, so a stride that does not hold a whole number
+        // of texels (blocks) is truncated below and the copy shears.
+        if (SubresData.Stride % FmtAttribs.GetElementSize() != 0)
+        {
+            LOG_ERROR_MESSAGE("Source buffer stride (", SubresData.Stride, ") is not a multiple of the ", FmtAttribs.GetElementSize(),
+                              "-byte elements of format ", FmtAttribs.Name, ".");
+            return;
+        }
+
         const Uint32 SrcBufferRowStrideInTexels = (FmtAttribs.ComponentType == COMPONENT_TYPE_COMPRESSED) ?
             StaticCast<Uint32>(SubresData.Stride / Uint64{FmtAttribs.ComponentSize} * Uint64{FmtAttribs.BlockWidth}) :
             StaticCast<Uint32>(SubresData.Stride / (Uint64{FmtAttribs.ComponentSize} * Uint64{FmtAttribs.NumComponents}));
