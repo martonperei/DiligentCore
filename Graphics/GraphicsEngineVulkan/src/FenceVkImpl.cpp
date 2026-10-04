@@ -257,15 +257,16 @@ VulkanUtilities::RecycledSemaphore FenceVkImpl::ExtractSignalSemaphore(SoftwareQ
     }
 #endif
 
-    // Find the last non-null semaphore
-    for (auto Iter = m_SyncPoints.begin(); Iter != m_SyncPoints.end(); ++Iter)
+    // Earlier signals may still be pending on the producing queue. Keep their semaphores
+    // owned by the sync points until completion instead of releasing them while selecting
+    // the semaphore for this wait. Several values may also share the same sync point.
+    for (auto& Item : m_SyncPoints)
     {
-        VulkanUtilities::RecycledSemaphore SemaphoreForContext = Iter->SyncPoint->ExtractSemaphore(CommandQueueId);
-        if (SemaphoreForContext)
-            Result = std::move(SemaphoreForContext);
-
-        if (Iter->Value >= Value)
+        if (Item.Value >= Value)
+        {
+            Result = Item.SyncPoint->ExtractSemaphore(CommandQueueId);
             break;
+        }
     }
 
     return Result;
