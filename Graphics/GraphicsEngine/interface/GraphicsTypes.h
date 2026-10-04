@@ -1517,6 +1517,11 @@ struct SwapChainDesc
     /// for the primary swap chain, the engine releases stale resources.
     Bool  IsPrimary                     DEFAULT_INITIALIZER(true);
 
+    /// Prefer immediate presentation over mailbox when VSync is disabled.
+    /// On Vulkan, this permits tearing instead of waiting for the next vertical blank.
+    /// Ignored by other backends and when immediate presentation is not supported.
+    Bool  PreferImmediatePresent        DEFAULT_INITIALIZER(false);
+
 #if DILIGENT_CPP_INTERFACE
     constexpr SwapChainDesc() noexcept
     {
