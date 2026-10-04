@@ -29,8 +29,6 @@
 
 #include "FenceD3D12Impl.hpp"
 
-#include <thread>
-
 #include "WinHPreface.h"
 #include <atlbase.h>
 #include "WinHPostface.h"
@@ -44,17 +42,8 @@ namespace Diligent
 FenceD3D12Impl::FenceD3D12Impl(IReferenceCounters*    pRefCounters,
                                RenderDeviceD3D12Impl* pDevice,
                                const FenceDesc&       Desc) :
-    TFenceBase{pRefCounters, pDevice, Desc},
-    m_FenceCompleteEvent //
-    {
-        CreateEvent(NULL,  // default security attributes
-                    TRUE,  // manual-reset event
-                    FALSE, // initial state is nonsignaled
-                    NULL)  // object name
-    }
+    TFenceBase{pRefCounters, pDevice, Desc}
 {
-    VERIFY(m_FenceCompleteEvent != NULL, "Failed to create fence complete event");
-
     const D3D12_FENCE_FLAGS Flags        = (m_Desc.Type == FENCE_TYPE_GENERAL && pDevice->GetNumImmediateContexts() > 1) ? D3D12_FENCE_FLAG_SHARED : D3D12_FENCE_FLAG_NONE;
     ID3D12Device* const     pd3d12Device = pDevice->GetD3D12Device();
     HRESULT                 hr           = pd3d12Device->CreateFence(0, Flags, __uuidof(m_pd3d12Fence), reinterpret_cast<void**>(static_cast<ID3D12Fence**>(&m_pd3d12Fence)));
@@ -67,10 +56,6 @@ FenceD3D12Impl::~FenceD3D12Impl()
 {
     // D3D12 object can only be destroyed when it is no longer used by the GPU
     GetDevice()->SafeReleaseDeviceObject(std::move(m_pd3d12Fence), ~0ull);
-    if (m_FenceCompleteEvent != NULL)
-    {
-        CloseHandle(m_FenceCompleteEvent);
-    }
 }
 
 Uint64 FenceD3D12Impl::GetCompletedValue()
@@ -94,16 +79,9 @@ void FenceD3D12Impl::Wait(Uint64 Value)
     if (GetCompletedValue() >= Value)
         return;
 
-    if (m_FenceCompleteEvent != NULL)
-    {
-        m_pd3d12Fence->SetEventOnCompletion(Value, m_FenceCompleteEvent);
-        WaitForSingleObject(m_FenceCompleteEvent, INFINITE);
-    }
-    else
-    {
-        while (GetCompletedValue() < Value)
-            std::this_thread::sleep_for(std::chrono::microseconds{1});
-    }
+    // With a null event handle, SetEventOnCompletion() does not return until the fence reaches the value.
+    // Unlike a shared event, this needs no reset between waits and is safe when several threads wait at once.
+    CHECK_D3D_RESULT(m_pd3d12Fence->SetEventOnCompletion(Value, nullptr), "Failed to wait for the fence");
 }
 
 } // namespace Diligent
