@@ -90,6 +90,10 @@ public:
         return m_pd3d12RootSignature;
     }
 
+    /// Returns the hash of the serialized D3D12 root signature, which is the same in every run
+    /// for the same root signature, unlike GetHash().
+    Uint64 GetSerializedHash() const { return m_SerializedHash; }
+
     Uint32 GetBaseRootIndex(Uint32 BindingIndex) const
     {
         VERIFY_EXPR(BindingIndex < m_SignatureCount);
@@ -119,6 +123,9 @@ private:
 
     // Root signature hash.
     const size_t m_Hash;
+
+    // The hash of the serialized D3D12 root signature.
+    Uint64 m_SerializedHash = 0;
 
     CComPtr<ID3D12RootSignature> m_pd3d12RootSignature;
 
