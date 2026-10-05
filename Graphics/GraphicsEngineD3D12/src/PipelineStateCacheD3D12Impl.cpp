@@ -329,8 +329,8 @@ CComPtr<ID3D12DeviceChild> PipelineStateCacheD3D12Impl::LoadPipeline(const std::
 
     {
         std::unique_lock<std::mutex> Lock{m_Mtx};
-        // Microsoft's documentation of ID3D12PipelineLibrary lets several threads use the library at
-        // once, except two threads loading the same pipeline.
+        // The Thread Safety remarks of Microsoft's page on ID3D12Device1::CreatePipelineLibrary let
+        // several threads use the library at once, except two threads loading the same pipeline.
         m_KeysChanged.wait(Lock, [&]() { return m_KeysBeingLoaded.count(Key) == 0; });
         if (m_Keys.count(Key) == 0 || m_FailedKeys.count(Key) != 0)
         {

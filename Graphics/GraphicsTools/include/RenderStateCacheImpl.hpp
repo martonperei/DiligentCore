@@ -157,8 +157,9 @@ private:
     std::unordered_map<UniqueIdentifier, RefCntWeakPtr<IPipelineState>> m_ReloadablePipelines;
 
     // Serialized shaders and pipeline states that are still being created on the thread pool.
-    // They are kept here rather than looked up in the archiver, because Reset() and WriteToBlob()
-    // release the archiver's references while the work may still be running.
+    // They are kept here rather than looked up in the archiver, because Reset() releases the
+    // archiver's references while the work may still be running. WriteToBlob() releases them too,
+    // but only after SerializeToBlob() has waited for every one.
     std::mutex                                 m_StatesBeingArchivedMtx;
     std::vector<RefCntAutoPtr<IShader>>        m_ShadersBeingArchived;
     std::vector<RefCntAutoPtr<IPipelineState>> m_PipelinesBeingArchived;
