@@ -31,6 +31,7 @@
 
 #include <unordered_map>
 #include <mutex>
+#include <vector>
 
 #include "RenderStateCache.h"
 #include "SerializationDevice.h"
@@ -110,6 +111,8 @@ public:
         return m_ReloadVersion;
     }
 
+    virtual Uint32 DILIGENT_CALL_TYPE GetNumStatesBeingArchived() override final;
+
     bool CreateShaderInternal(const ShaderCreateInfo& ShaderCI,
                               IShader**               ppShader);
 
@@ -152,6 +155,13 @@ private:
 
     std::mutex                                                          m_ReloadablePipelinesMtx;
     std::unordered_map<UniqueIdentifier, RefCntWeakPtr<IPipelineState>> m_ReloadablePipelines;
+
+    // Serialized shaders and pipeline states that are still being created on the thread pool.
+    // They are kept here rather than looked up in the archiver, because Reset() and WriteToBlob()
+    // release the archiver's references while the work may still be running.
+    std::mutex                                 m_StatesBeingArchivedMtx;
+    std::vector<RefCntAutoPtr<IShader>>        m_ShadersBeingArchived;
+    std::vector<RefCntAutoPtr<IPipelineState>> m_PipelinesBeingArchived;
 
     Uint32 m_ReloadVersion = 0;
 };
