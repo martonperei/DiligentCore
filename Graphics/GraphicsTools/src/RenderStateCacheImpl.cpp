@@ -32,6 +32,7 @@
 #include "ReloadablePipelineState.hpp"
 #include "AsyncPipelineState.hpp"
 
+#include <algorithm>
 #include <array>
 #include <mutex>
 #include <vector>
@@ -94,6 +95,24 @@ Bool RenderStateCacheImpl::WriteToStream(Uint32 ContentVersion, IFileStream* pSt
         return false;
 
     return pStream->Write(pDataBlob->GetConstDataPtr(), pDataBlob->GetSize());
+}
+
+Uint32 RenderStateCacheImpl::GetNumStatesBeingArchived()
+{
+    std::lock_guard<std::mutex> Guard{m_StatesBeingArchivedMtx};
+
+    m_ShadersBeingArchived.erase(std::remove_if(m_ShadersBeingArchived.begin(), m_ShadersBeingArchived.end(),
+                                                [](IShader* pShader) {
+                                                    return pShader->GetStatus() != SHADER_STATUS_COMPILING;
+                                                }),
+                                 m_ShadersBeingArchived.end());
+    m_PipelinesBeingArchived.erase(std::remove_if(m_PipelinesBeingArchived.begin(), m_PipelinesBeingArchived.end(),
+                                                  [](IPipelineState* pPSO) {
+                                                      return pPSO->GetStatus() != PIPELINE_STATE_STATUS_COMPILING;
+                                                  }),
+                                   m_PipelinesBeingArchived.end());
+
+    return static_cast<Uint32>(m_ShadersBeingArchived.size() + m_PipelinesBeingArchived.size());
 }
 
 void RenderStateCacheImpl::Reset()
@@ -442,6 +461,11 @@ bool RenderStateCacheImpl::CreateShaderInternal(const ShaderCreateInfo& ShaderCI
         m_pSerializationDevice->CreateShader(ArchiveShaderCI, ArchiveInfo, &pArchivedShader);
         if (pArchivedShader)
         {
+            if (pArchivedShader->GetStatus() == SHADER_STATUS_COMPILING)
+            {
+                std::lock_guard<std::mutex> Guard{m_StatesBeingArchivedMtx};
+                m_ShadersBeingArchived.emplace_back(pArchivedShader);
+            }
             if (m_pArchiver->AddShader(pArchivedShader))
                 RENDER_STATE_CACHE_LOG(RENDER_STATE_CACHE_LOG_LEVEL_NORMAL, "Added shader '", HashStr, "'.");
             else
@@ -907,6 +931,12 @@ bool RenderStateCacheImpl::CreatePipelineStateInternal(const CreateInfoType& PSO
 
         if (pSerializedPSO)
         {
+            if (pSerializedPSO->GetStatus() == PIPELINE_STATE_STATUS_COMPILING)
+            {
+                std::lock_guard<std::mutex> Guard{m_StatesBeingArchivedMtx};
+                m_PipelinesBeingArchived.emplace_back(pSerializedPSO);
+            }
+
             if (m_pArchiver->AddPipelineState(pSerializedPSO))
                 RENDER_STATE_CACHE_LOG(RENDER_STATE_CACHE_LOG_LEVEL_NORMAL, "Added pipeline '", HashStr, "'.");
             else

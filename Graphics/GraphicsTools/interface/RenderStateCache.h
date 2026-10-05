@@ -308,6 +308,25 @@ DILIGENT_BEGIN_INTERFACE(IRenderStateCache, IObject)
 
     /// The reload version is incremented every time the cache is reloaded.
     VIRTUAL Uint32 METHOD(GetReloadVersion)(THIS) CONST PURE;
+
+
+    /// Returns the number of render states whose serialized copies for the archive are still being created.
+
+    /// Every shader and pipeline state that the cache creates and does not find in its data is also
+    /// created by the serialization device, so that WriteToBlob() can store it. A shader created with
+    /// SHADER_COMPILE_FLAG_ASYNCHRONOUS or a pipeline state created with PSO_CREATE_FLAG_ASYNCHRONOUS
+    /// is serialized by the device's shader compilation thread pool, and that work may still be
+    /// running after the object that the cache returned is ready.
+    ///
+    /// An application that uses the cache from more than one thread, for example to compile shaders
+    /// on a thread of its own while another thread creates pipelines, may use this method to make
+    /// sure that no serialization is running on the thread pool before it uses the cache on the other
+    /// thread.
+    ///
+    /// \remarks    The method does not wait: it returns the number of copies that are still being
+    ///             created at the time of the call. The objects that WriteToBlob() serializes are
+    ///             waited for by WriteToBlob() itself.
+    VIRTUAL Uint32 METHOD(GetNumStatesBeingArchived)(THIS) PURE;
 };
 DILIGENT_END_INTERFACE
 
@@ -383,6 +402,7 @@ DILIGENT_END_INTERFACE
 #    define IRenderStateCache_Reload(This, ...)                        CALL_IFACE_METHOD(RenderStateCache, Reload,                       This, __VA_ARGS__)
 #    define IRenderStateCache_GetContentVersion(This)                  CALL_IFACE_METHOD(RenderStateCache, GetContentVersion,            This)
 #    define IRenderStateCache_GetReloadVersion(This)                   CALL_IFACE_METHOD(RenderStateCache, GetReloadVersion,             This)
+#    define IRenderStateCache_GetNumStatesBeingArchived(This)          CALL_IFACE_METHOD(RenderStateCache, GetNumStatesBeingArchived,    This)
 // clang-format on
 
 #endif
