@@ -35,6 +35,8 @@
 #include "D3D12TypeConversions.hpp"
 #include "HashUtils.hpp"
 
+#include "xxhash.h"
+
 namespace Diligent
 {
 
@@ -248,6 +250,9 @@ RootSignatureD3D12::RootSignatureD3D12(IReferenceCounters*                      
             LOG_ERROR_MESSAGE("Error: ", (const char*)error->GetBufferPointer());
         }
         CHECK_D3D_RESULT_THROW(hr, "Failed to serialize root signature");
+
+        // The pipeline state cache keys its entries by this hash, so it must not change between runs.
+        m_SerializedHash = XXH3_64bits(signature->GetBufferPointer(), signature->GetBufferSize());
 
         m_pCache = &pDeviceD3D12Impl->GetRootSignatureCache();
 

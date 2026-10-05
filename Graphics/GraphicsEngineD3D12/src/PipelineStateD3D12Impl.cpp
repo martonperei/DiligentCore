@@ -728,8 +728,11 @@ void PipelineStateD3D12Impl::InitializePipeline(const GraphicsPipelineStateCreat
 
         // Try to load from the cache
         PipelineStateCacheD3D12Impl* const pPSOCacheD3D12 = ClassPtrCast<PipelineStateCacheD3D12Impl>(CreateInfo.pPSOCache);
-        if (pPSOCacheD3D12 != nullptr && !WName.empty())
-            m_pd3d12PSO = pPSOCacheD3D12->LoadGraphicsPipeline(WName.c_str(), d3d12PSODesc);
+        const std::wstring                 PSOCacheKey    = pPSOCacheD3D12 != nullptr && !WName.empty() ?
+            PipelineStateCacheD3D12Impl::GetPipelineKey(WName, d3d12PSODesc, m_RootSig->GetSerializedHash()) :
+            std::wstring{};
+        if (!PSOCacheKey.empty())
+            m_pd3d12PSO = pPSOCacheD3D12->LoadGraphicsPipeline(PSOCacheKey, d3d12PSODesc);
         if (!m_pd3d12PSO)
         {
             // Note: renderdoc frame capture fails if any interface but IID_ID3D12PipelineState is requested
@@ -738,8 +741,8 @@ void PipelineStateD3D12Impl::InitializePipeline(const GraphicsPipelineStateCreat
                 LOG_ERROR_AND_THROW("Failed to create pipeline state");
 
             // Add to the cache
-            if (pPSOCacheD3D12 != nullptr && !WName.empty())
-                pPSOCacheD3D12->StorePipeline(WName.c_str(), m_pd3d12PSO);
+            if (!PSOCacheKey.empty())
+                pPSOCacheD3D12->StorePipeline(PSOCacheKey, m_pd3d12PSO);
         }
     }
 #ifdef D3D12_H_HAS_MESH_SHADER
@@ -868,8 +871,11 @@ void PipelineStateD3D12Impl::InitializePipeline(const ComputePipelineStateCreate
     // Try to load from the cache
     const std::wstring                 WName          = WidenString(m_Desc.Name);
     PipelineStateCacheD3D12Impl* const pPSOCacheD3D12 = ClassPtrCast<PipelineStateCacheD3D12Impl>(CreateInfo.pPSOCache);
-    if (pPSOCacheD3D12 != nullptr && !WName.empty())
-        m_pd3d12PSO = pPSOCacheD3D12->LoadComputePipeline(WName.c_str(), d3d12PSODesc);
+    const std::wstring                 PSOCacheKey    = pPSOCacheD3D12 != nullptr && !WName.empty() ?
+        PipelineStateCacheD3D12Impl::GetPipelineKey(WName, d3d12PSODesc, m_RootSig->GetSerializedHash()) :
+        std::wstring{};
+    if (!PSOCacheKey.empty())
+        m_pd3d12PSO = pPSOCacheD3D12->LoadComputePipeline(PSOCacheKey, d3d12PSODesc);
     if (!m_pd3d12PSO)
     {
         // Note: renderdoc frame capture fails if any interface but IID_ID3D12PipelineState is requested
@@ -878,8 +884,8 @@ void PipelineStateD3D12Impl::InitializePipeline(const ComputePipelineStateCreate
             LOG_ERROR_AND_THROW("Failed to create pipeline state");
 
         // Add to the cache
-        if (pPSOCacheD3D12 != nullptr && !WName.empty())
-            pPSOCacheD3D12->StorePipeline(WName.c_str(), m_pd3d12PSO);
+        if (!PSOCacheKey.empty())
+            pPSOCacheD3D12->StorePipeline(PSOCacheKey, m_pd3d12PSO);
     }
 
     if (!WName.empty())
