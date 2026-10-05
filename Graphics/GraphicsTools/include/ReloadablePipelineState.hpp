@@ -42,12 +42,12 @@ namespace Diligent
 
 class RenderStateCacheImpl;
 
-/// Reloadable pipeline state implements the IPipelineState interface and delegates all
+/// Reloadable pipeline state implements the IReloadablePipelineState interface and delegates all
 /// calls to the internal pipeline object, which can be replaced at run-time.
-class ReloadablePipelineState final : public ProxyPipelineState<ObjectBase<IPipelineState>>
+class ReloadablePipelineState final : public ProxyPipelineState<ObjectBase<IReloadablePipelineState>>
 {
 public:
-    using TBase = ProxyPipelineState<ObjectBase<IPipelineState>>;
+    using TBase = ProxyPipelineState<ObjectBase<IReloadablePipelineState>>;
 
     // {1F325E25-496B-41B4-A1F9-242302ABCDD4}
     static constexpr INTERFACE_ID IID_InternalImpl =
@@ -64,6 +64,17 @@ public:
     using IObject::QueryInterface;
 
     virtual PIPELINE_STATE_STATUS DILIGENT_CALL_TYPE GetStatus(bool WaitForCompletion) override;
+
+    /// Implementation of IReloadablePipelineState::GetReloadStatus().
+    virtual PIPELINE_STATE_STATUS DILIGENT_CALL_TYPE GetReloadStatus(bool WaitForCompletion) override final;
+
+    /// Implementation of IReloadablePipelineState::CommitReload().
+    virtual bool DILIGENT_CALL_TYPE CommitReload() override final;
+
+#ifdef DILIGENT_DEVELOPMENT
+    /// Verifies that neither the pipeline nor the pipeline pending to replace it is still being created.
+    void DvpVerifyNotCompiling();
+#endif
 
     static void Create(RenderStateCacheImpl*          pStateCache,
                        IPipelineState*                pPipeline,
@@ -89,6 +100,9 @@ private:
 
     // Old pipeline state kept around to copy static resources from
     RefCntAutoPtr<IPipelineState> m_pOldPipeline;
+
+    // The pipeline the last reload created, which replaces the current one when CommitReload() finds it ready
+    RefCntAutoPtr<IPipelineState> m_pPendingPipeline;
 };
 
 } // namespace Diligent
