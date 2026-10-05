@@ -2297,6 +2297,14 @@ void DeviceContextVkImpl::MapBuffer(IBuffer* pBuffer, MAP_TYPE MapType, MAP_FLAG
                                 "access and use MAP_FLAG_DO_NOT_WAIT flag.");
         }
 
+        // Device writes to non-coherent memory become visible to the host only once the range is
+        // invalidated after the writes, so the range is invalidated before the CPU reads it, as
+        // MapTextureSubresource() does for staging textures.
+        if ((pBufferVk->GetMemoryProperties() & MEMORY_PROPERTY_HOST_COHERENT) == 0)
+        {
+            pBufferVk->InvalidateMappedRange(0, BuffDesc.Size);
+        }
+
         pMappedData = pBufferVk->GetCPUAddress();
     }
     else if (MapType == MAP_WRITE)
@@ -2371,13 +2379,7 @@ void DeviceContextVkImpl::UnmapBuffer(IBuffer* pBuffer, MAP_TYPE MapType)
 
     if (MapType == MAP_READ)
     {
-        if (BuffDesc.Usage == USAGE_STAGING || BuffDesc.Usage == USAGE_UNIFIED)
-        {
-            if ((pBufferVk->GetMemoryProperties() & MEMORY_PROPERTY_HOST_COHERENT) == 0)
-            {
-                pBufferVk->InvalidateMappedRange(0, BuffDesc.Size);
-            }
-        }
+        // MapBuffer() invalidated the range before the CPU read it.
     }
     else if (MapType == MAP_WRITE)
     {
