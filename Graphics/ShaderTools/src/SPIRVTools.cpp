@@ -123,6 +123,8 @@ std::vector<uint32_t> OptimizeSPIRV(const std::vector<uint32_t>& SrcSPIRV, int T
     // Do not run validator in release build
     Options.set_run_validator(false);
 #endif
+    if (Passes & SPIRV_OPTIMIZATION_FLAG_SKIP_VALIDATION)
+        Options.set_run_validator(false);
 
     // SPIR-V bytecode generated from HLSL must be legalized to
     // turn it into a valid vulkan SPIR-V shader.

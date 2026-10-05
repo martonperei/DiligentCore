@@ -39,7 +39,11 @@ enum SPIRV_OPTIMIZATION_FLAGS : Uint32
     SPIRV_OPTIMIZATION_FLAG_NONE             = 0u,
     SPIRV_OPTIMIZATION_FLAG_LEGALIZATION     = 1u << 0u,
     SPIRV_OPTIMIZATION_FLAG_PERFORMANCE      = 1u << 1u,
-    SPIRV_OPTIMIZATION_FLAG_STRIP_REFLECTION = 1u << 2u
+    SPIRV_OPTIMIZATION_FLAG_STRIP_REFLECTION = 1u << 2u,
+
+    // Do not validate the byte code before running the passes, also in development builds.
+    // Use only for byte code that has already been validated and that the passes do not need to check.
+    SPIRV_OPTIMIZATION_FLAG_SKIP_VALIDATION = 1u << 3u
 };
 DEFINE_FLAG_ENUM_OPERATORS(SPIRV_OPTIMIZATION_FLAGS);
 

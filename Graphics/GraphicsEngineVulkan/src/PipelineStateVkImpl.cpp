@@ -1011,10 +1011,20 @@ void PipelineStateVkImpl::RemapOrVerifyShaderResources(
 #if !DILIGENT_NO_HLSL
                 // We have to strip reflection instructions to fix the following validation error:
                 //     SPIR-V module not valid: DecorateStringGOOGLE requires one of the following extensions: SPV_GOOGLE_decorate_string
-                // Optimizer also performs validation and may catch problems with the byte code.
                 // NB: SPIRV offsets become INVALID after this operation.
                 SPIRV_OPTIMIZATION_FLAGS OptimizationFlags = SPIRV_OPTIMIZATION_FLAG_STRIP_REFLECTION;
-                if (pShaderResources->IsHLSLSource())
+
+                // A uniform buffer converted to push constants, here or when the pipeline was archived, changes
+                // the byte code beyond binding and descriptor set numbers. Such a stage is legalized and validated
+                // again. Any other stage only had its binding and descriptor set numbers changed since it was
+                // compiled, which leaves it as legal and as valid as the compiler made it, so it is neither
+                // legalized nor validated again. The validation layer still validates the shader module.
+                const bool IsPatched = PushConstant && pShaderResources->GetResourceByName(SPIRVShaderResourceAttribs::ResourceType::PushConstant, PushConstant.Name.c_str()) != nullptr;
+                if (!IsPatched)
+                {
+                    OptimizationFlags |= SPIRV_OPTIMIZATION_FLAG_SKIP_VALIDATION;
+                }
+                else if (pShaderResources->IsHLSLSource())
                 {
                     OptimizationFlags |= SPIRV_OPTIMIZATION_FLAG_LEGALIZATION;
                 }
