@@ -930,6 +930,18 @@ Uint32 RenderStateCacheImpl::Reload(ReloadGraphicsPipelineCallbackType ReloadGra
 
     Uint32 NumStatesReloaded = 0;
 
+#ifdef DILIGENT_DEVELOPMENT
+    // A pipeline being created reads its shaders, so replacing their code now could give it a mix of old and new code.
+    {
+        std::lock_guard<std::mutex> Guard{m_ReloadablePipelinesMtx};
+        for (auto pso_it : m_ReloadablePipelines)
+        {
+            if (RefCntAutoPtr<ReloadablePipelineState> pReloadablePSO{pso_it.second.Lock(), ReloadablePipelineState::IID_InternalImpl})
+                pReloadablePSO->DvpVerifyNotCompiling();
+        }
+    }
+#endif
+
     // Reload all shaders first
     {
         std::lock_guard<std::mutex> Guard{m_ReloadableShadersMtx};
@@ -961,7 +973,7 @@ Uint32 RenderStateCacheImpl::Reload(ReloadGraphicsPipelineCallbackType ReloadGra
             if (RefCntAutoPtr<IPipelineState> pPSO = pso_it.second.Lock())
             {
                 RefCntAutoPtr<ReloadablePipelineState> pReloadablePSO{pPSO, ReloadablePipelineState::IID_InternalImpl};
-                if (pPSO)
+                if (pReloadablePSO)
                 {
                     if (pReloadablePSO->Reload(ReloadGraphicsPipeline, pUserData))
                         ++NumStatesReloaded;

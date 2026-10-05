@@ -286,6 +286,14 @@ DILIGENT_BEGIN_INTERFACE(IRenderStateCache, IObject)
     ///
     /// Reloading is only enabled if the cache was created with the `EnableHotReload` member of
     /// `Diligent::RenderStateCacheCreateInfo` struct set to true.
+    ///
+    /// A recreated pipeline does not replace the one the application draws with until the application
+    /// calls IReloadablePipelineState::CommitReload() on it, as IReloadablePipelineState says.
+    ///
+    /// \warning    A pipeline being created reads its shaders, and a reload replaces the shaders' code,
+    ///             so the application must not reload while any pipeline created through the cache,
+    ///             or recreated by an earlier reload, is still being created. A development build
+    ///             checks it.
     VIRTUAL Uint32 METHOD(Reload)(THIS_
                                   ReloadGraphicsPipelineCallbackType ReloadGraphicsPipeline DEFAULT_VALUE(nullptr), 
                                   void*                              pUserData              DEFAULT_VALUE(nullptr)) PURE;
@@ -305,10 +313,65 @@ DILIGENT_END_INTERFACE
 
 #include "../../../Primitives/interface/UndefInterfaceHelperMacros.h"
 
+
+// {82E73D94-1874-4A1F-A45A-B41FE43E14D4}
+static DILIGENT_CONSTEXPR INTERFACE_ID IID_ReloadablePipelineState =
+    {0x82e73d94, 0x1874, 0x4a1f, {0xa4, 0x5a, 0xb4, 0x1f, 0xe4, 0x3e, 0x14, 0xd4}};
+
+#define DILIGENT_INTERFACE_NAME IReloadablePipelineState
+#include "../../../Primitives/interface/DefineInterfaceHelperMacros.h"
+
+#define IReloadablePipelineStateInclusiveMethods \
+    IPipelineStateInclusiveMethods;              \
+    IReloadablePipelineStateMethods ReloadablePipelineState
+
+// clang-format off
+
+/// Reloadable pipeline state interface.
+
+/// A pipeline state created by a render state cache with hot reload enabled implements this interface.
+/// IRenderStateCache::Reload() recreates the pipeline when any of its shaders changed, but does not
+/// replace the pipeline the application draws with: the recreated pipeline may still be being created
+/// asynchronously (see Diligent::PSO_CREATE_FLAG_ASYNCHRONOUS), or may fail, and the application
+/// may want to switch several related pipelines at once. The recreated pipeline stays pending until
+/// the application calls CommitReload(), and the pipeline keeps drawing its previous version until then.
+DILIGENT_BEGIN_INTERFACE(IReloadablePipelineState, IPipelineState)
+{
+    /// Returns the status of the pipeline that the last reload created to replace this one.
+
+    /// \param [in] WaitForCompletion - If true, the method waits until the pending pipeline is ready or has failed.
+    ///
+    /// \return     PIPELINE_STATE_STATUS_UNINITIALIZED if no recreated pipeline is pending, and the status of
+    ///             the pending pipeline otherwise.
+    VIRTUAL PIPELINE_STATE_STATUS METHOD(GetReloadStatus)(THIS_
+                                                          bool WaitForCompletion DEFAULT_VALUE(false)) PURE;
+
+    /// Replaces the pipeline with the one the last reload created, if that pipeline is ready.
+
+    /// \return     true if the pipeline was replaced, and false otherwise.
+    ///
+    /// If the pending pipeline is ready, it replaces the current one, and the pipeline is no longer pending.
+    /// If it has failed, the method logs an error, releases it and keeps the current pipeline.
+    /// If it is still being created, or no pipeline is pending, the method does nothing.
+    VIRTUAL bool METHOD(CommitReload)(THIS) PURE;
+};
+DILIGENT_END_INTERFACE
+
+#include "../../../Primitives/interface/UndefInterfaceHelperMacros.h"
+
 #if DILIGENT_C_INTERFACE
 
 // clang-format off
-#    define IRenderStateCache_Load(This, ...)                          CALL_IFACE_METHOD(RenderStateCache, Load,                         This, __VA_ARGS__)
+#    define IReloadablePipelineState_GetReloadStatus(This, ...) CALL_IFACE_METHOD(ReloadablePipelineState, GetReloadStatus, This, __VA_ARGS__)
+#    define IReloadablePipelineState_CommitReload(This)         CALL_IFACE_METHOD(ReloadablePipelineState, CommitReload,    This)
+// clang-format on
+
+#endif
+
+#if DILIGENT_C_INTERFACE
+
+// clang-format off
+#    define IRenderStateCache_Load(This, ...)                         CALL_IFACE_METHOD(RenderStateCache, Load,                         This, __VA_ARGS__)
 #    define IRenderStateCache_CreateShader(This, ...)                  CALL_IFACE_METHOD(RenderStateCache, CreateShader,                 This, __VA_ARGS__)
 #    define IRenderStateCache_CreateGraphicsPipelineState(This, ...)   CALL_IFACE_METHOD(RenderStateCache, CreateGraphicsPipelineState,  This, __VA_ARGS__)
 #    define IRenderStateCache_CreateComputePipelineState(This, ...)    CALL_IFACE_METHOD(RenderStateCache, CreateComputePipelineState,   This, __VA_ARGS__)
