@@ -824,15 +824,31 @@ bool RenderStateCacheImpl::CreatePipelineStateInternal(const CreateInfoType& PSO
     bool FoundInCache = false;
     // Try to find PSO in the loaded archive
     {
+        // The archive does not keep the SRB allocation granularity, the immediate context mask or the
+        // PSO cache, so they are taken from the caller's create info.
+        // The description is compared here, before the pipeline is created, rather than once it is ready,
+        // because a pipeline created asynchronously is not ready when the unpack returns.
+        // A pipeline whose description does not match is refused: changing its type makes the dearchiver
+        // reject the create info and create nothing.
         auto Callback = MakeCallback(
             [&PSOCreateInfo](PipelineStateCreateInfo& CI) {
                 CI.PSODesc.Name = PSOCreateInfo.PSODesc.Name;
+                if (CI.PSODesc != PSOCreateInfo.PSODesc)
+                {
+                    LOG_ERROR_MESSAGE("Description of pipeline state '", (PSOCreateInfo.PSODesc.Name != nullptr ? PSOCreateInfo.PSODesc.Name : "<unnamed>"),
+                                      "' does not match the description of the pipeline unpacked from the cache, which will not be created. "
+                                      "This may be the result of a hash conflict, though the probability of this should be virtually zero.");
+                    CI.PSODesc.PipelineType = PIPELINE_TYPE_INVALID;
+                }
             });
 
         PipelineStateUnpackInfo UnpackInfo;
         UnpackInfo.PipelineType                  = PSOCreateInfo.PSODesc.PipelineType;
         UnpackInfo.Name                          = HashStr.c_str();
         UnpackInfo.pDevice                       = m_pDevice;
+        UnpackInfo.SRBAllocationGranularity      = PSOCreateInfo.PSODesc.SRBAllocationGranularity;
+        UnpackInfo.ImmediateContextMask          = PSOCreateInfo.PSODesc.ImmediateContextMask;
+        UnpackInfo.pCache                        = PSOCreateInfo.pPSOCache;
         UnpackInfo.ModifyPipelineStateCreateInfo = Callback;
         UnpackInfo.pUserData                     = Callback;
         RefCntAutoPtr<IPipelineState> pPSO;
@@ -840,21 +856,7 @@ bool RenderStateCacheImpl::CreatePipelineStateInternal(const CreateInfoType& PSO
         if (pPSO)
         {
             const PIPELINE_STATE_STATUS Status = pPSO->GetStatus();
-            if (Status == PIPELINE_STATE_STATUS_READY)
-            {
-                if (pPSO->GetDesc() == PSOCreateInfo.PSODesc)
-                {
-                    *ppPipelineState = pPSO.Detach();
-                    FoundInCache     = true;
-                }
-                else
-                {
-                    LOG_ERROR_MESSAGE("Description of pipeline state '", (PSOCreateInfo.PSODesc.Name != nullptr ? PSOCreateInfo.PSODesc.Name : "<unnamed>"),
-                                      "' does not match the description of the pipeline unpacked from the cache. This may be the result of a "
-                                      "hash conflict, though the probability of this should be virtually zero.");
-                }
-            }
-            else if (Status == PIPELINE_STATE_STATUS_COMPILING)
+            if (Status == PIPELINE_STATE_STATUS_READY || Status == PIPELINE_STATE_STATUS_COMPILING)
             {
                 *ppPipelineState = pPSO.Detach();
                 FoundInCache     = true;
