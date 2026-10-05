@@ -449,7 +449,11 @@ INSTANTIATE_SERIALIZED_PSO_CTOR(TilePipelineStateCreateInfo);
 INSTANTIATE_SERIALIZED_PSO_CTOR(RayTracingPipelineStateCreateInfo);
 
 SerializedPipelineStateImpl::~SerializedPipelineStateImpl()
-{}
+{
+    // Make sure that the asynchronous initialization task is complete, as it references the pipeline
+    // state object.
+    GetStatus(/*WaitForCompletion = */ true);
+}
 
 void SerializedPipelineStateImpl::SerializeShaderCreateInfo(DeviceType              Type,
                                                             const ShaderCreateInfo& CI)
