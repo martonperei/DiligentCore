@@ -341,8 +341,14 @@ CComPtr<ID3D12DeviceChild> PipelineStateCacheD3D12Impl::LoadPipeline(const std::
         m_KeysBeingLoaded.insert(Key);
     }
 
-    CComPtr<ID3D12DeviceChild> d3d12PSO;
-    const HRESULT              hr = Load(d3d12PSO);
+    // The library is asked for ID3D12PipelineState, as the pipeline's creation asks the device. The
+    // runtime hands out a separate pointer for each interface, and its ID3D12DeviceChild pointer is
+    // not the ID3D12PipelineState one, while PipelineStateD3D12Impl::GetD3D12PipelineState() casts
+    // what it holds without a QueryInterface. A command list given the ID3D12DeviceChild pointer
+    // crashes in the driver. The debug layer's wrapper answers both interfaces with one pointer, so
+    // a run with it hides the difference.
+    CComPtr<ID3D12PipelineState> d3d12PSO;
+    const HRESULT                hr = Load(d3d12PSO);
     {
         std::lock_guard<std::mutex> Lock{m_Mtx};
         m_KeysBeingLoaded.erase(Key);
@@ -357,19 +363,21 @@ CComPtr<ID3D12DeviceChild> PipelineStateCacheD3D12Impl::LoadPipeline(const std::
                           std::hex, static_cast<Uint32>(hr), std::dec, ")");
         d3d12PSO.Release();
     }
-    return d3d12PSO;
+    // A plain cast, because CComPtr's assignment from another interface's CComPtr queries for
+    // ID3D12DeviceChild and would return the pointer this load avoids.
+    return CComPtr<ID3D12DeviceChild>{static_cast<ID3D12DeviceChild*>(d3d12PSO.p)};
 }
 
 CComPtr<ID3D12DeviceChild> PipelineStateCacheD3D12Impl::LoadComputePipeline(const std::wstring& Key, const D3D12_COMPUTE_PIPELINE_STATE_DESC& Desc)
 {
-    return LoadPipeline(Key, [&](CComPtr<ID3D12DeviceChild>& d3d12PSO) {
+    return LoadPipeline(Key, [&](CComPtr<ID3D12PipelineState>& d3d12PSO) {
         return m_pLibrary->LoadComputePipeline(Key.c_str(), &Desc, IID_PPV_ARGS(&d3d12PSO));
     });
 }
 
 CComPtr<ID3D12DeviceChild> PipelineStateCacheD3D12Impl::LoadGraphicsPipeline(const std::wstring& Key, const D3D12_GRAPHICS_PIPELINE_STATE_DESC& Desc)
 {
-    return LoadPipeline(Key, [&](CComPtr<ID3D12DeviceChild>& d3d12PSO) {
+    return LoadPipeline(Key, [&](CComPtr<ID3D12PipelineState>& d3d12PSO) {
         return m_pLibrary->LoadGraphicsPipeline(Key.c_str(), &Desc, IID_PPV_ARGS(&d3d12PSO));
     });
 }
