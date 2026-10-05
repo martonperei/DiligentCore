@@ -124,7 +124,7 @@ void ReloadablePipelineState::QueryInterface(const INTERFACE_ID& IID, IObject** 
     DEV_CHECK_ERR(*ppInterface == nullptr, "Overwriting reference to an existing object may result in memory leaks");
     *ppInterface = nullptr;
 
-    if (IID == IID_InternalImpl || IID == IID_PipelineState || IID == IID_DeviceObject || IID == IID_Unknown)
+    if (IID == IID_InternalImpl || IID == IID_ReloadablePipelineState || IID == IID_PipelineState || IID == IID_DeviceObject || IID == IID_Unknown)
     {
         *ppInterface = this;
         (*ppInterface)->AddRef();
@@ -165,22 +165,11 @@ bool ReloadablePipelineState::Reload(ReloadGraphicsPipelineCallbackType ReloadGr
 
     if (pNewPSO)
     {
-        if (m_pPipeline != pNewPSO)
-        {
-            // Do not update old pipeline if it is not null.
-            // If multiple reloads are requested, we need to keep the original pipeline that keeps the original resources.
-            if (!m_pOldPipeline)
-            {
-                m_pOldPipeline = m_pPipeline;
-            }
-            m_pPipeline = pNewPSO;
-
-            // If any of the pipelines is not ready, we will copy static resources when both are ready in GetStatus()
-            if (m_pPipeline->GetStatus() == PIPELINE_STATE_STATUS_READY && m_pOldPipeline->GetStatus() == PIPELINE_STATE_STATUS_READY)
-            {
-                CopyStaticResources();
-            }
-        }
+        // The new pipeline may still be being created, and its creation may fail, so it does not replace
+        // the current one here: it waits until the application commits it with CommitReload().
+        // A pending pipeline from an earlier reload that was never committed is replaced by the new one,
+        // or dropped if the shaders changed back to those of the current pipeline.
+        m_pPendingPipeline = m_pPipeline != pNewPSO ? pNewPSO : RefCntAutoPtr<IPipelineState>{};
     }
     else
     {
@@ -189,6 +178,56 @@ bool ReloadablePipelineState::Reload(ReloadGraphicsPipelineCallbackType ReloadGr
     }
     return !FoundInCache;
 }
+
+PIPELINE_STATE_STATUS ReloadablePipelineState::GetReloadStatus(bool WaitForCompletion)
+{
+    return m_pPendingPipeline ? m_pPendingPipeline->GetStatus(WaitForCompletion) : PIPELINE_STATE_STATUS_UNINITIALIZED;
+}
+
+bool ReloadablePipelineState::CommitReload()
+{
+    if (!m_pPendingPipeline)
+        return false;
+
+    const PIPELINE_STATE_STATUS Status = m_pPendingPipeline->GetStatus();
+    if (Status == PIPELINE_STATE_STATUS_FAILED)
+    {
+        // Note that the description of a pipeline that is not ready must not be queried.
+        LOG_ERROR_MESSAGE("Failed to reload pipeline state '", m_Name,
+                          "': the recreated pipeline failed to initialize. The pipeline keeps its previous version.");
+        m_pPendingPipeline.Release();
+        return false;
+    }
+    if (Status != PIPELINE_STATE_STATUS_READY)
+        return false;
+
+    // Do not update old pipeline if it is not null.
+    // If multiple reloads are requested, we need to keep the original pipeline that keeps the original resources.
+    if (!m_pOldPipeline)
+    {
+        m_pOldPipeline = m_pPipeline;
+    }
+    m_pPipeline = std::move(m_pPendingPipeline);
+
+    // If the old pipeline is not ready, we will copy static resources when both are ready in GetStatus()
+    if (m_pOldPipeline->GetStatus() == PIPELINE_STATE_STATUS_READY)
+    {
+        CopyStaticResources();
+    }
+    return true;
+}
+
+#ifdef DILIGENT_DEVELOPMENT
+void ReloadablePipelineState::DvpVerifyNotCompiling()
+{
+    const bool IsCompiling =
+        (m_pPipeline && m_pPipeline->GetStatus() == PIPELINE_STATE_STATUS_COMPILING) ||
+        (m_pPendingPipeline && m_pPendingPipeline->GetStatus() == PIPELINE_STATE_STATUS_COMPILING);
+    DEV_CHECK_ERR(!IsCompiling, "Pipeline state '", m_Name,
+                  "' is still being created. Reloading replaces the code of the shaders that the pipeline is created from. "
+                  "Wait until every pipeline created through the cache is ready or has failed before reloading.");
+}
+#endif
 
 void ReloadablePipelineState::CopyStaticResources()
 {
