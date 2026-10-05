@@ -1015,8 +1015,8 @@ void PipelineStateVkImpl::RemapOrVerifyShaderResources(
                 SPIRV_OPTIMIZATION_FLAGS OptimizationFlags = SPIRV_OPTIMIZATION_FLAG_STRIP_REFLECTION;
 
                 // A uniform buffer converted to push constants, here or when the pipeline was archived, changes
-                // the byte code beyond binding and descriptor set numbers. Such a stage is legalized and validated
-                // again. Any other stage only had its binding and descriptor set numbers changed since it was
+                // the byte code beyond binding and descriptor set numbers. Such a stage is validated again, and
+                // legalized again when its source is HLSL, as before. Any other stage only had its binding and descriptor set numbers changed since it was
                 // compiled, which leaves it as legal and as valid as the compiler made it, so it is neither
                 // legalized nor validated again. The validation layer still validates the shader module.
                 const bool IsPatched = PushConstant && pShaderResources->GetResourceByName(SPIRVShaderResourceAttribs::ResourceType::PushConstant, PushConstant.Name.c_str()) != nullptr;
