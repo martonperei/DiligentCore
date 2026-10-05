@@ -344,8 +344,8 @@ DILIGENT_BEGIN_INTERFACE(IBuffer, IDeviceObject)
     ///
     /// \note   This method must never be used for USAGE_DYNAMIC buffers.
     ///
-    /// When a mapped buffer is unmapped, it is automatically invalidated by
-    /// the engine if necessary.
+    /// When a buffer is mapped for reading, it is automatically invalidated by
+    /// the engine if necessary before the mapped pointer is returned.
     VIRTUAL void METHOD(InvalidateMappedRange)(THIS_
                                                Uint64 StartOffset,
                                                Uint64 Size) PURE;
