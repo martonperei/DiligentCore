@@ -4013,17 +4013,31 @@ struct DeviceFeaturesVk
     /// If the extension is not supported, the texture is initialized on the device.
     DEVICE_FEATURE_STATE HostImageCopy DEFAULT_INITIALIZER(DEVICE_FEATURE_STATE_DISABLED);
 
+    /// Indicates whether the device supports the pipelineExecutableInfo feature of
+    /// VK_KHR_pipeline_executable_properties extension.
+
+    /// When this feature is enabled, the engine creates every pipeline with
+    /// VK_PIPELINE_CREATE_CAPTURE_STATISTICS_BIT_KHR, so that an application may read
+    /// the statistics the driver reports of each executable of the compiled pipeline,
+    /// such as the registers it uses, with vkGetPipelineExecutablePropertiesKHR and
+    /// vkGetPipelineExecutableStatisticsKHR on IPipelineStateVk::GetVkPipeline().
+    /// Capturing the statistics may make pipeline creation slower, so unlike the other
+    /// Vulkan-specific features, EngineVkCreateInfo leaves this one disabled unless the
+    /// application asks for it.
+    DEVICE_FEATURE_STATE PipelineExecutableInfo DEFAULT_INITIALIZER(DEVICE_FEATURE_STATE_DISABLED);
+
 
 #if DILIGENT_CPP_INTERFACE
     constexpr DeviceFeaturesVk() noexcept {}
 
 #define ENUMERATE_VK_DEVICE_FEATURES(Handler) \
-    Handler(DynamicRendering) \
-    Handler(HostImageCopy)
+    Handler(DynamicRendering)                 \
+    Handler(HostImageCopy)                    \
+    Handler(PipelineExecutableInfo)
 
     explicit constexpr DeviceFeaturesVk(DEVICE_FEATURE_STATE State) noexcept
     {
-        static_assert(sizeof(*this) == 2, "Did you add a new feature to DeviceFeatures? Please add it to ENUMERATE_VK_DEVICE_FEATURES.");
+        static_assert(sizeof(*this) == 3, "Did you add a new feature to DeviceFeatures? Please add it to ENUMERATE_VK_DEVICE_FEATURES.");
     #define INIT_FEATURE(Feature) Feature = State;
         ENUMERATE_VK_DEVICE_FEATURES(INIT_FEATURE)
     #undef INIT_FEATURE
@@ -4239,7 +4253,10 @@ struct EngineVkCreateInfo DILIGENT_DERIVE(EngineCreateInfo)
     explicit EngineVkCreateInfo(const EngineCreateInfo &EngineCI) noexcept :
         EngineCreateInfo{EngineCI},
         FeaturesVk{DEVICE_FEATURE_STATE_OPTIONAL}
-    {}
+    {
+        // Capturing pipeline statistics changes how every pipeline is created, so an application asks for it.
+        FeaturesVk.PipelineExecutableInfo = DEVICE_FEATURE_STATE_DISABLED;
+    }
 #endif
 };
 typedef struct EngineVkCreateInfo EngineVkCreateInfo;
