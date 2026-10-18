@@ -51,6 +51,13 @@
 
 #include "PlatformDefinitions.h"
 
+#if PLATFORM_WIN32
+#    include "WinHPreface.h"
+#    include <Windows.h>
+#    include <sddl.h>
+#    include "WinHPostface.h"
+#endif
+
 namespace VulkanUtilities
 {
 
@@ -151,6 +158,63 @@ bool IsExtensionAvailable(const std::vector<VkExtensionProperties>& Extensions, 
 
     return false;
 }
+
+#if PLATFORM_WIN32
+// AMD's Windows Vulkan driver opens two named mutexes, Local\__DDrawCheckExclMode__ and
+// Local\__DDrawExclMode__, in every vkCreateInstance() call, asking only for
+// SYNCHRONIZE | MUTEX_MODIFY_STATE. Where they don't exist, it creates them with a DACL that grants
+// Everyone these two rights and nothing else, and vkDestroyInstance() closes them again. When two
+// processes both find the mutexes missing and one of them creates them first, the other one's
+// CreateMutex() opens the existing object asking for full access, which that DACL denies. The
+// driver then fails the instance, and the loader, left without a driver, returns
+// VK_ERROR_INCOMPATIBLE_DRIVER. The mutexes are missing only while no process in the session holds
+// them, so the process opens or creates both before its first instance and keeps them open until
+// it exits: any instance created in the session while the process runs then finds them.
+//
+// The names are the driver's undocumented internals, not part of any interface it publishes, so a
+// driver that renames them leaves this hold doing nothing. Other drivers don't use the objects.
+void HoldAmdInstanceMutexes()
+{
+    static const bool Held = []() {
+        // The rights the driver asks for, and all that its DACL grants. A request for more would
+        // fail on an object the driver has created, just as the driver's own request does.
+        constexpr DWORD MutexAccess = SYNCHRONIZE | MUTEX_MODIFY_STATE;
+        static_assert(MutexAccess == 0x100001, "The DACL below spells out MutexAccess");
+
+        // A mutex created here gets the driver's own DACL, so that the driver opens it from any
+        // process in the session it would itself let in.
+        PSECURITY_DESCRIPTOR pDescriptor = nullptr;
+        if (!ConvertStringSecurityDescriptorToSecurityDescriptorA("D:(A;;0x100001;;;WD)", SDDL_REVISION_1, &pDescriptor, nullptr))
+        {
+            LOG_WARNING_MESSAGE("Failed to create the security descriptor for AMD driver's instance mutexes (error ", GetLastError(),
+                                "). A Vulkan instance created while another process creates its first instance may fail on AMD drivers.");
+            return false;
+        }
+
+        SECURITY_ATTRIBUTES SecurityAttribs{};
+        SecurityAttribs.nLength              = sizeof(SecurityAttribs);
+        SecurityAttribs.lpSecurityDescriptor = pDescriptor;
+        SecurityAttribs.bInheritHandle       = FALSE;
+
+        bool AllHeld = true;
+        for (const char* Name : {"Local\\__DDrawCheckExclMode__", "Local\\__DDrawExclMode__"})
+        {
+            // No CREATE_MUTEX_INITIAL_OWNER flag: a mutex created here is unowned. The handle is
+            // never closed; the process exit closes it.
+            if (CreateMutexExA(&SecurityAttribs, Name, 0, MutexAccess) == nullptr)
+            {
+                LOG_WARNING_MESSAGE("Failed to open or create mutex ", Name, " (error ", GetLastError(),
+                                    "). A Vulkan instance created while another process creates its first instance may fail on AMD drivers.");
+                AllHeld = false;
+            }
+        }
+
+        LocalFree(pDescriptor);
+        return AllHeld;
+    }();
+    (void)Held;
+}
+#endif
 
 } // namespace
 
@@ -286,6 +350,10 @@ uint32_t Instance::GetApiVersion()
     VkInstanceCreateInfo InstCI{};
     InstCI.sType            = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
     InstCI.pApplicationInfo = &AppInfo;
+
+#if PLATFORM_WIN32
+    HoldAmdInstanceMutexes();
+#endif
 
     VkInstance vkInstance = VK_NULL_HANDLE;
     VkResult   Result     = vkCreateInstance(&InstCI, nullptr, &vkInstance);
@@ -603,6 +671,11 @@ Instance::Instance(const CreateInfo& CI) :
     InstanceCreateInfo.ppEnabledExtensionNames = InstanceExtensions.empty() ? nullptr : InstanceExtensions.data();
     InstanceCreateInfo.enabledLayerCount       = static_cast<uint32_t>(InstanceLayers.size());
     InstanceCreateInfo.ppEnabledLayerNames     = InstanceLayers.empty() ? nullptr : InstanceLayers.data();
+
+#if PLATFORM_WIN32
+    // Before either way of creating the instance: an OpenXR runtime creates it through the driver too.
+    HoldAmdInstanceMutexes();
+#endif
 
     VkResult res = VK_ERROR_UNKNOWN;
 #if DILIGENT_USE_OPENXR
