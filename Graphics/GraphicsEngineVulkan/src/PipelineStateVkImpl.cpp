@@ -216,6 +216,19 @@ void BuildSpecializationData(const PipelineStateVkImpl::TShaderStages&     Shade
 }
 
 
+// Returns the pipeline creation flags that the device's enabled features add to every pipeline.
+VkPipelineCreateFlags GetDevicePipelineCreateFlags(const RenderDeviceVkImpl* pDeviceVk)
+{
+    VkPipelineCreateFlags Flags = 0;
+#ifdef DILIGENT_DEBUG
+    Flags |= VK_PIPELINE_CREATE_DISABLE_OPTIMIZATION_BIT;
+#endif
+    if (pDeviceVk->GetLogicalDevice().GetEnabledExtFeatures().PipelineExecutableProperties.pipelineExecutableInfo != VK_FALSE)
+        Flags |= VK_PIPELINE_CREATE_CAPTURE_STATISTICS_BIT_KHR;
+    return Flags;
+}
+
+
 void CreateComputePipeline(RenderDeviceVkImpl*                           pDeviceVk,
                            std::vector<VkPipelineShaderStageCreateInfo>& Stages,
                            const PipelineLayoutVk&                       Layout,
@@ -226,11 +239,9 @@ void CreateComputePipeline(RenderDeviceVkImpl*                           pDevice
     const VulkanUtilities::LogicalDevice& LogicalDevice = pDeviceVk->GetLogicalDevice();
 
     VkComputePipelineCreateInfo PipelineCI{};
-    PipelineCI.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
-    PipelineCI.pNext = nullptr;
-#ifdef DILIGENT_DEBUG
-    PipelineCI.flags = VK_PIPELINE_CREATE_DISABLE_OPTIMIZATION_BIT;
-#endif
+    PipelineCI.sType              = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
+    PipelineCI.pNext              = nullptr;
+    PipelineCI.flags              = GetDevicePipelineCreateFlags(pDeviceVk);
     PipelineCI.basePipelineHandle = VK_NULL_HANDLE; // a pipeline to derive from
     PipelineCI.basePipelineIndex  = -1;             // an index into the pCreateInfos parameter to use as a pipeline to derive from
 
@@ -256,9 +267,7 @@ void CreateGraphicsPipeline(RenderDeviceVkImpl*                           pDevic
     VkGraphicsPipelineCreateInfo PipelineCI{};
     PipelineCI.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
     PipelineCI.pNext = nullptr;
-#ifdef DILIGENT_DEBUG
-    PipelineCI.flags = VK_PIPELINE_CREATE_DISABLE_OPTIMIZATION_BIT;
-#endif
+    PipelineCI.flags = GetDevicePipelineCreateFlags(pDeviceVk);
 
     VkPipelineRenderingCreateInfoKHR PipelineRenderingCI{};
     std::vector<VkFormat>            ColorAttachmentFormats;
@@ -490,9 +499,7 @@ void CreateRayTracingPipeline(RenderDeviceVkImpl*                               
     VkRayTracingPipelineCreateInfoKHR PipelineCI{};
     PipelineCI.sType = VK_STRUCTURE_TYPE_RAY_TRACING_PIPELINE_CREATE_INFO_KHR;
     PipelineCI.pNext = nullptr;
-#ifdef DILIGENT_DEBUG
-    PipelineCI.flags = VK_PIPELINE_CREATE_DISABLE_OPTIMIZATION_BIT;
-#endif
+    PipelineCI.flags = GetDevicePipelineCreateFlags(pDeviceVk);
 
     PipelineCI.stageCount                   = static_cast<Uint32>(vkStages.size());
     PipelineCI.pStages                      = vkStages.data();

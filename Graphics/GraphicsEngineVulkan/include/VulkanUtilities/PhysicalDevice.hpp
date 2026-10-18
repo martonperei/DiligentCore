@@ -48,29 +48,30 @@ public:
 
     struct ExtensionFeatures
     {
-        VkPhysicalDeviceMeshShaderFeaturesEXT                MeshShader                = {};
-        VkPhysicalDevice16BitStorageFeaturesKHR              Storage16Bit              = {};
-        VkPhysicalDevice8BitStorageFeaturesKHR               Storage8Bit               = {};
-        VkPhysicalDeviceShaderFloat16Int8FeaturesKHR         ShaderFloat16Int8         = {};
-        VkPhysicalDeviceAccelerationStructureFeaturesKHR     AccelStruct               = {};
-        VkPhysicalDeviceRayTracingPipelineFeaturesKHR        RayTracingPipeline        = {};
-        VkPhysicalDeviceRayQueryFeaturesKHR                  RayQuery                  = {};
-        VkPhysicalDeviceBufferDeviceAddressFeaturesKHR       BufferDeviceAddress       = {};
-        VkPhysicalDeviceDescriptorIndexingFeaturesEXT        DescriptorIndexing        = {};
-        VkPhysicalDevicePortabilitySubsetFeaturesKHR         PortabilitySubset         = {};
-        VkPhysicalDeviceVertexAttributeDivisorFeaturesEXT    VertexAttributeDivisor    = {};
-        VkPhysicalDeviceTimelineSemaphoreFeaturesKHR         TimelineSemaphore         = {};
-        VkPhysicalDeviceHostQueryResetFeatures               HostQueryReset            = {};
-        VkPhysicalDeviceFragmentShadingRateFeaturesKHR       ShadingRate               = {};
-        VkPhysicalDeviceFragmentDensityMapFeaturesEXT        FragmentDensityMap        = {}; // Only for desktop devices
-        VkPhysicalDeviceFragmentDensityMap2FeaturesEXT       FragmentDensityMap2       = {}; // Only for mobile devices
-        VkPhysicalDeviceMultiviewFeaturesKHR                 Multiview                 = {}; // Required for RenderPass2
-        VkPhysicalDeviceMultiDrawFeaturesEXT                 MultiDraw                 = {};
-        VkPhysicalDeviceShaderDrawParametersFeatures         ShaderDrawParameters      = {};
-        VkPhysicalDeviceDynamicRenderingFeaturesKHR          DynamicRendering          = {};
-        VkPhysicalDeviceHostImageCopyFeaturesEXT             HostImageCopy             = {};
-        VkPhysicalDeviceFragmentShaderBarycentricFeaturesKHR FragmentShaderBarycentric = {};
-        VkPhysicalDeviceComputeShaderDerivativesFeaturesKHR  ComputeShaderDerivatives  = {};
+        VkPhysicalDeviceMeshShaderFeaturesEXT                   MeshShader                   = {};
+        VkPhysicalDevice16BitStorageFeaturesKHR                 Storage16Bit                 = {};
+        VkPhysicalDevice8BitStorageFeaturesKHR                  Storage8Bit                  = {};
+        VkPhysicalDeviceShaderFloat16Int8FeaturesKHR            ShaderFloat16Int8            = {};
+        VkPhysicalDeviceAccelerationStructureFeaturesKHR        AccelStruct                  = {};
+        VkPhysicalDeviceRayTracingPipelineFeaturesKHR           RayTracingPipeline           = {};
+        VkPhysicalDeviceRayQueryFeaturesKHR                     RayQuery                     = {};
+        VkPhysicalDeviceBufferDeviceAddressFeaturesKHR          BufferDeviceAddress          = {};
+        VkPhysicalDeviceDescriptorIndexingFeaturesEXT           DescriptorIndexing           = {};
+        VkPhysicalDevicePortabilitySubsetFeaturesKHR            PortabilitySubset            = {};
+        VkPhysicalDeviceVertexAttributeDivisorFeaturesEXT       VertexAttributeDivisor       = {};
+        VkPhysicalDeviceTimelineSemaphoreFeaturesKHR            TimelineSemaphore            = {};
+        VkPhysicalDeviceHostQueryResetFeatures                  HostQueryReset               = {};
+        VkPhysicalDeviceFragmentShadingRateFeaturesKHR          ShadingRate                  = {};
+        VkPhysicalDeviceFragmentDensityMapFeaturesEXT           FragmentDensityMap           = {}; // Only for desktop devices
+        VkPhysicalDeviceFragmentDensityMap2FeaturesEXT          FragmentDensityMap2          = {}; // Only for mobile devices
+        VkPhysicalDeviceMultiviewFeaturesKHR                    Multiview                    = {}; // Required for RenderPass2
+        VkPhysicalDeviceMultiDrawFeaturesEXT                    MultiDraw                    = {};
+        VkPhysicalDeviceShaderDrawParametersFeatures            ShaderDrawParameters         = {};
+        VkPhysicalDeviceDynamicRenderingFeaturesKHR             DynamicRendering             = {};
+        VkPhysicalDeviceHostImageCopyFeaturesEXT                HostImageCopy                = {};
+        VkPhysicalDeviceFragmentShaderBarycentricFeaturesKHR    FragmentShaderBarycentric    = {};
+        VkPhysicalDeviceComputeShaderDerivativesFeaturesKHR     ComputeShaderDerivatives     = {};
+        VkPhysicalDevicePipelineExecutablePropertiesFeaturesKHR PipelineExecutableProperties = {};
 
 
         bool Spirv14              = false; // Ray tracing requires Vulkan 1.2 or SPIRV 1.4 extension

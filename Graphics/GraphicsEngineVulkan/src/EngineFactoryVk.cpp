@@ -1299,6 +1299,17 @@ void EngineFactoryVkImpl::CreateDeviceAndContextsVk(const EngineVkCreateInfo& En
                 NextExt  = &EnabledExtFeats.HostImageCopy.pNext;
             }
 
+            if (EnabledFeaturesVk.PipelineExecutableInfo)
+            {
+                VERIFY_EXPR(PhysicalDevice->IsExtensionSupported(VK_KHR_PIPELINE_EXECUTABLE_PROPERTIES_EXTENSION_NAME));
+                DeviceExtensions.push_back(VK_KHR_PIPELINE_EXECUTABLE_PROPERTIES_EXTENSION_NAME);
+
+                EnabledExtFeats.PipelineExecutableProperties = DeviceExtFeatures.PipelineExecutableProperties;
+
+                *NextExt = &EnabledExtFeats.PipelineExecutableProperties;
+                NextExt  = &EnabledExtFeats.PipelineExecutableProperties.pNext;
+            }
+
             // Append user-defined features
             *NextExt = EngineCI.pDeviceExtensionFeatures;
         }
