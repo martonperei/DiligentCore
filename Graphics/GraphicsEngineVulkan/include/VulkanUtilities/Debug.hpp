@@ -18,6 +18,12 @@ bool SetupDebugUtils(VkInstance                          instance,
 // enables the extension without the messenger SetupDebugUtils() creates.
 void SetupDebugUtilsObjectNames(VkInstance instance);
 
+// Whether objects allocated for a single draw or dispatch, such as dynamic descriptor sets, are to be
+// named: only with the messenger SetupDebugUtils() creates, whose validation messages name objects.
+// Graphics debuggers read the names of the objects that outlive a frame, which SetObjectName() names
+// whenever the functions are loaded.
+bool TransientObjectNamesEnabled();
+
 // Initializes the debug report callback.
 bool SetupDebugReport(VkInstance               instance,
                       VkDebugReportFlagBitsEXT flags,

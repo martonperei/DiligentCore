@@ -45,6 +45,10 @@ PFN_vkDestroyDebugReportCallbackEXT DestroyDebugReportCallbackEXT = nullptr;
 VkDebugUtilsMessengerEXT DbgMessenger = VK_NULL_HANDLE;
 VkDebugReportCallbackEXT DbgCallback  = VK_NULL_HANDLE;
 
+// Whether objects allocated for a single draw or dispatch are named, which only the validation
+// messenger's messages need.
+bool NameTransientObjects = false;
+
 std::unordered_map<HashMapStringKey, std::atomic<int>> g_IgnoreMessages;
 
 VKAPI_ATTR VkBool32 VKAPI_CALL DebugMessengerCallback(VkDebugUtilsMessageSeverityFlagBitsEXT      messageSeverity,
@@ -241,6 +245,8 @@ bool SetupDebugUtils(VkInstance                          instance,
     QueueInsertDebugUtilsLabelEXT = reinterpret_cast<PFN_vkQueueInsertDebugUtilsLabelEXT>(vkGetInstanceProcAddr(instance, "vkQueueInsertDebugUtilsLabelEXT"));
     VERIFY_EXPR(QueueInsertDebugUtilsLabelEXT != nullptr);
 
+    NameTransientObjects = true;
+
     return err == VK_SUCCESS;
 }
 
@@ -248,6 +254,15 @@ void SetupDebugUtilsObjectNames(VkInstance instance)
 {
     SetDebugUtilsObjectNameEXT = reinterpret_cast<PFN_vkSetDebugUtilsObjectNameEXT>(vkGetInstanceProcAddr(instance, "vkSetDebugUtilsObjectNameEXT"));
     SetDebugUtilsObjectTagEXT  = reinterpret_cast<PFN_vkSetDebugUtilsObjectTagEXT>(vkGetInstanceProcAddr(instance, "vkSetDebugUtilsObjectTagEXT"));
+
+    // Graphics debuggers read the names of the objects that outlive a frame; naming an object made for
+    // a single draw would cost a call per draw that no message reads.
+    NameTransientObjects = false;
+}
+
+bool TransientObjectNamesEnabled()
+{
+    return NameTransientObjects && SetDebugUtilsObjectNameEXT != nullptr;
 }
 
 bool SetupDebugReport(VkInstance               instance,
