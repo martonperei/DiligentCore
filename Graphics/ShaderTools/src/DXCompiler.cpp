@@ -34,6 +34,8 @@
 #include <atomic>
 #include <array>
 #include <sstream>
+#include <algorithm>
+#include <unordered_map>
 
 #if PLATFORM_WIN32 || PLATFORM_UNIVERSAL_WINDOWS
 #    include "WinHPreface.h"
@@ -207,6 +209,9 @@ public:
             return E_FAIL;
         }
 
+        // The name the compiler records the file under
+        String RequestedName = fileName;
+
         // validate file name
         if (fileName.size() > 2 && fileName[0] == '.' && (fileName[1] == '\\' || fileName[1] == '/'))
             fileName.erase(0, 2);
@@ -232,10 +237,16 @@ public:
             return E_FAIL;
         }
 
-        m_FileDataCache.emplace_back(std::move(pFileData));
+        m_FileDataCache.emplace_back(std::move(RequestedName), std::move(pFileData));
 
         pSourceBlob->QueryInterface(IID_PPV_ARGS(ppIncludeSource));
         return S_OK;
+    }
+
+    // Each file the handler loaded, under the name the compiler asked for it by, with its text.
+    const std::vector<std::pair<String, RefCntAutoPtr<IDataBlob>>>& GetLoadedFiles() const
+    {
+        return m_FileDataCache;
     }
 
     HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void** ppvObject) override
@@ -258,7 +269,7 @@ private:
     CComPtr<IDxcLibrary>                   m_pdxcLibrary;
     IShaderSourceInputStreamFactory* const m_pStreamFactory;
     std::atomic_long                       m_RefCount{0};
-    std::vector<RefCntAutoPtr<IDataBlob>>  m_FileDataCache;
+    std::vector<std::pair<String, RefCntAutoPtr<IDataBlob>>> m_FileDataCache;
 };
 
 class DxcBlobWrapper final : public IDxcBlob
@@ -324,6 +335,148 @@ private:
 
     std::atomic<long> m_RefCount{0};
 };
+
+// Returns the path with forward slashes and without "." components: on Windows, the name DXC asks
+// the include handler for differs from the one it records in the debug information, "./File.fxh".
+String NormalizeIncludePath(const String& Path)
+{
+    String Normalized = Path;
+    std::replace(Normalized.begin(), Normalized.end(), '\\', '/');
+    while (Normalized.compare(0, 2, "./") == 0)
+        Normalized.erase(0, 2);
+    for (size_t Pos = Normalized.find("/./"); Pos != String::npos; Pos = Normalized.find("/./", Pos))
+        Normalized.erase(Pos, 2);
+    return Normalized;
+}
+
+// Adds to each NonSemantic.Shader.DebugInfo.100 DebugSource in the SPIRV code that has no text
+// the text of its file among Files, which are file names with their texts, in OpStrings after the
+// module's last OpString. A text longer than an OpString holds continues in DebugSourceContinued
+// instructions after the DebugSource. Returns the new code, or an empty vector when no DebugSource
+// changed.
+std::vector<uint32_t> AddDebugSourceText(const uint32_t*                                                 pSPIRV,
+                                         size_t                                                          WordCount,
+                                         const std::vector<std::pair<String, RefCntAutoPtr<IDataBlob>>>& Files)
+{
+    constexpr uint32_t OpString             = 7;
+    constexpr uint32_t OpExtInstImport      = 11;
+    constexpr uint32_t OpExtInst            = 12;
+    constexpr uint32_t DebugSource          = 35;  // NonSemanticShaderDebugInfo100DebugSource
+    constexpr uint32_t DebugSourceContinued = 102; // NonSemanticShaderDebugInfo100DebugSourceContinued
+    constexpr size_t   HeaderSize           = 5;
+    // The longest string an OpString holds: its words after the first two, less the terminating nul.
+    constexpr size_t MaxStringLength = (0xFFFFu - 2) * sizeof(uint32_t) - 1;
+
+    // A string literal is nul-terminated, and packs its first byte into the lowest-order byte of a word.
+    auto ReadString = [pSPIRV](size_t First, size_t End) {
+        String Str;
+        for (size_t c = 0; c < (End - First) * sizeof(uint32_t); ++c)
+        {
+            const char Char = static_cast<char>((pSPIRV[First + c / 4] >> (c % 4 * 8)) & 0xFFu);
+            if (Char == '\0')
+                break;
+            Str.push_back(Char);
+        }
+        return Str;
+    };
+    auto AppendString = [](std::vector<uint32_t>& Code, uint32_t Id, const char* Str, size_t Length) {
+        const size_t Words = Length / sizeof(uint32_t) + 1;
+        Code.push_back(static_cast<uint32_t>((Words + 2) << 16u) | OpString);
+        Code.push_back(Id);
+        const size_t First = Code.size();
+        Code.resize(First + Words, 0);
+        for (size_t c = 0; c < Length; ++c)
+            Code[First + c / 4] |= uint32_t{static_cast<uint8_t>(Str[c])} << (c % 4 * 8);
+    };
+
+    struct Completion
+    {
+        size_t           Pos;
+        const IDataBlob* pText;
+    };
+    std::vector<Completion>              Completions;
+    uint32_t                             DebugInfoSet = 0;
+    std::unordered_map<uint32_t, String> Strings;
+    size_t                               StringsEnd = 0;
+    for (size_t i = HeaderSize; i < WordCount;)
+    {
+        const uint32_t Words = pSPIRV[i] >> 16u;
+        const uint32_t Op    = pSPIRV[i] & 0xFFFFu;
+        if (Words == 0 || i + Words > WordCount)
+            return {};
+
+        if (Op == OpExtInstImport && Words >= 3 && ReadString(i + 2, i + Words) == "NonSemantic.Shader.DebugInfo.100")
+        {
+            DebugInfoSet = pSPIRV[i + 1];
+        }
+        else if (Op == OpString && Words >= 3)
+        {
+            Strings.emplace(pSPIRV[i + 1], ReadString(i + 2, i + Words));
+            StringsEnd = i + Words;
+        }
+        else if (Op == OpExtInst && Words == 6 && DebugInfoSet != 0 && pSPIRV[i + 3] == DebugInfoSet && pSPIRV[i + 4] == DebugSource)
+        {
+            // A DebugSource's operands are its file's name and, when it has it, its text.
+            const auto Name = Strings.find(pSPIRV[i + 5]);
+            if (Name != Strings.end())
+            {
+                const String SourcePath = NormalizeIncludePath(Name->second);
+                for (const auto& File : Files)
+                {
+                    if (NormalizeIncludePath(File.first) == SourcePath)
+                    {
+                        Completions.push_back({i, File.second});
+                        break;
+                    }
+                }
+            }
+        }
+        i += Words;
+    }
+    if (Completions.empty() || Completions.front().Pos < StringsEnd)
+        return {};
+
+    uint32_t              Bound = pSPIRV[3];
+    std::vector<uint32_t> Code{pSPIRV, pSPIRV + StringsEnd};
+    // Each completion's text, in strings of at most MaxStringLength characters.
+    std::vector<std::vector<uint32_t>> TextIds(Completions.size());
+    for (size_t c = 0; c < Completions.size(); ++c)
+    {
+        const char*  Text   = static_cast<const char*>(Completions[c].pText->GetConstDataPtr());
+        const size_t Length = Completions[c].pText->GetSize();
+        size_t       Offset = 0;
+        do
+        {
+            const size_t ChunkLength = std::min(MaxStringLength, Length - Offset);
+            TextIds[c].push_back(Bound);
+            AppendString(Code, Bound++, Text + Offset, ChunkLength);
+            Offset += ChunkLength;
+        } while (Offset < Length);
+    }
+
+    size_t Next = StringsEnd;
+    for (size_t c = 0; c < Completions.size(); ++c)
+    {
+        const size_t Pos = Completions[c].Pos;
+        Code.insert(Code.end(), pSPIRV + Next, pSPIRV + Pos);
+        Code.push_back((7u << 16u) | OpExtInst);
+        Code.insert(Code.end(), pSPIRV + Pos + 1, pSPIRV + Pos + 6);
+        Code.push_back(TextIds[c][0]);
+        for (size_t t = 1; t < TextIds[c].size(); ++t)
+        {
+            Code.push_back((6u << 16u) | OpExtInst);
+            Code.push_back(pSPIRV[Pos + 1]); // The DebugSource's result type, OpTypeVoid
+            Code.push_back(Bound++);
+            Code.push_back(DebugInfoSet);
+            Code.push_back(DebugSourceContinued);
+            Code.push_back(TextIds[c][t]);
+        }
+        Next = Pos + 6;
+    }
+    Code.insert(Code.end(), pSPIRV + Next, pSPIRV + WordCount);
+    Code[3] = Bound;
+    return Code;
+}
 
 } // namespace
 
@@ -409,6 +562,17 @@ bool DXCompilerImpl::Compile(const CompileAttribs& Attribs)
         }
         else
         {
+            if (Attribs.AddIncludedSourceText)
+            {
+                std::vector<uint32_t> SPIRV = AddDebugSourceText(static_cast<const uint32_t*>(pCompiledBlob->GetBufferPointer()),
+                                                                 pCompiledBlob->GetBufferSize() / sizeof(uint32_t),
+                                                                 IncludeHandler.GetLoadedFiles());
+                if (!SPIRV.empty())
+                {
+                    DxcBlobWrapper::Create(DataBlobImpl::Create(SPIRV.size() * sizeof(uint32_t), SPIRV.data()), Attribs.ppBlobOut);
+                    return true;
+                }
+            }
             *Attribs.ppBlobOut = pCompiledBlob.Detach();
             return true;
         }
@@ -760,7 +924,32 @@ void DXCompilerImpl::Compile(const ShaderCreateInfo& ShaderCI,
     const String       Profile = GetHLSLProfileString(ShaderCI.Desc.ShaderType, ShaderModel);
     const std::wstring wstrProfile{Profile.begin(), Profile.end()};
     const std::wstring wstrEntryPoint{ShaderCI.EntryPoint, ShaderCI.EntryPoint + strlen(ShaderCI.EntryPoint)};
-    const String       SourceName = NormalizeShaderSourcePath(ShaderCI.FilePath);
+    const bool         DebugInfo = (ShaderCI.CompileFlags & SHADER_COMPILE_FLAG_DEBUG_INFO) != 0;
+
+    // Debug information records each file under its name with the text the compiler read, and the
+    // lines it refers to must lie within that text, as DXC's SPIR-V validator checks. The source that
+    // BuildHLSLSourceString() composes puts the definitions and the macros before the file's text and
+    // restarts the lines at the file's text with #line, so the composed text, recorded under the
+    // file's name, doesn't hold the lines recorded for it. With debug information, the composed
+    // source therefore includes the file, which the include handler reads through the source factory
+    // under the file's own name, and takes a name of its own in the file's directory. Without a file
+    // to include, the composed source keeps the shader's text, and its lines count from its start.
+    String SourceName = NormalizeShaderSourcePath(ShaderCI.FilePath);
+    String IncludeSourceFile;
+    bool   IgnoreLineDirectives = false;
+    if (DebugInfo)
+    {
+        if (ShaderCI.Source == nullptr && !SourceName.empty() && ShaderCI.pShaderSourceStreamFactory != nullptr)
+        {
+            const size_t NamePos = SourceName.find_last_of("/\\");
+            IncludeSourceFile    = NamePos != String::npos ? SourceName.substr(NamePos + 1) : SourceName;
+            SourceName += ".preamble.hlsl";
+        }
+        else
+        {
+            IgnoreLineDirectives = true;
+        }
+    }
     const std::wstring wstrSourceName{SourceName.begin(), SourceName.end()};
 
     std::vector<const wchar_t*> DxilArgs;
@@ -768,14 +957,20 @@ void DXCompilerImpl::Compile(const ShaderCreateInfo& ShaderCI,
     {
         //DxilArgs.push_back(L"-WX");  // Warnings as errors
 #ifdef DILIGENT_DEBUG
-        DxilArgs.push_back(DXC_ARG_DEBUG); // Debug info
-        if (m_Library.GetVersion() >= Version{1, 5})
-        {
-            // Silence the following warning:
-            // no output provided for debug - embedding PDB in shader container.  Use -Qembed_debug to silence this warning.
-            DxilArgs.push_back(L"-Qembed_debug");
-        }
+        const bool EmbedDebugInfo = true;
+#else
+        const bool EmbedDebugInfo = DebugInfo;
 #endif
+        if (EmbedDebugInfo)
+        {
+            DxilArgs.push_back(DXC_ARG_DEBUG); // Debug info
+            if (m_Library.GetVersion() >= Version{1, 5})
+            {
+                // Silence the following warning:
+                // no output provided for debug - embedding PDB in shader container.  Use -Qembed_debug to silence this warning.
+                DxilArgs.push_back(L"-Qembed_debug");
+            }
+        }
         DxilArgs.push_back(GetDxcOptimizationArg(ShaderCI.ShaderOptimizationLevel, m_Library.GetTarget(), m_Library.GetVersion()));
     }
     else if (m_Library.GetTarget() == DXCompilerTarget::Vulkan)
@@ -786,6 +981,13 @@ void DXCompilerImpl::Compile(const ShaderCreateInfo& ShaderCI,
                 L"-fspv-reflect",
             });
         DxilArgs.push_back(GetDxcOptimizationArg(ShaderCI.ShaderOptimizationLevel, m_Library.GetTarget(), m_Library.GetVersion()));
+
+        if (DebugInfo)
+        {
+            // NonSemantic.Shader.DebugInfo.100 with the full text of every file the shader reads.
+            DxilArgs.push_back(DXC_ARG_DEBUG);
+            DxilArgs.push_back(L"-fspv-debug=vulkan-with-source");
+        }
 
         if (m_APIVersion >= VK_API_VERSION_1_2 && ShaderModel >= ShaderVersion{6, 3})
         {
@@ -812,6 +1014,9 @@ void DXCompilerImpl::Compile(const ShaderCreateInfo& ShaderCI,
         DxilArgs.push_back(L".");
     }
 
+    if (IgnoreLineDirectives)
+        DxilArgs.push_back(L"-ignore-line-directives");
+
     DxilArgs.push_back((ShaderCI.CompileFlags & SHADER_COMPILE_FLAG_PACK_MATRIX_ROW_MAJOR) != 0 ?
                            DXC_ARG_PACK_MATRIX_ROW_MAJOR :
                            DXC_ARG_PACK_MATRIX_COLUMN_MAJOR);
@@ -822,7 +1027,7 @@ void DXCompilerImpl::Compile(const ShaderCreateInfo& ShaderCI,
     IDXCompiler::CompileAttribs CA;
 
     String Source{Preamble != nullptr ? Preamble : ""};
-    Source.append(BuildHLSLSourceString(ShaderCI));
+    Source.append(BuildHLSLSourceString(ShaderCI, !IncludeSourceFile.empty() ? IncludeSourceFile.c_str() : nullptr));
 
     DxcDefine Defines[] = {{L"DXCOMPILER", L"1"}};
 
@@ -838,6 +1043,7 @@ void DXCompilerImpl::Compile(const ShaderCreateInfo& ShaderCI,
     CA.pShaderSourceStreamFactory = ShaderCI.pShaderSourceStreamFactory;
     CA.ppBlobOut                  = &pDXIL;
     CA.ppCompilerOutput           = &pDxcLog;
+    CA.AddIncludedSourceText      = DebugInfo && m_Library.GetTarget() == DXCompilerTarget::Vulkan;
 
     bool result = Compile(CA);
     HandleHLSLCompilerResult(result, pDxcLog.p, Source, ShaderCI.Desc.Name, ppCompilerOutput);

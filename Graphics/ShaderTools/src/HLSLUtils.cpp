@@ -43,7 +43,7 @@ static constexpr char g_HLSLDefinitions[] =
 // clang-format on
 
 
-String BuildHLSLSourceString(const ShaderCreateInfo& ShaderCI) noexcept(false)
+String BuildHLSLSourceString(const ShaderCreateInfo& ShaderCI, const char* IncludeSourceFile) noexcept(false)
 {
     String HLSLSource;
 
@@ -56,8 +56,17 @@ String BuildHLSLSourceString(const ShaderCreateInfo& ShaderCI) noexcept(false)
         AppendShaderMacros(HLSLSource, ShaderCI.Macros);
     }
 
-    AppendLine1Marker(HLSLSource, ShaderCI.FilePath != nullptr ? ShaderCI.FilePath : ShaderCI.Desc.Name);
-    AppendShaderSourceCode(HLSLSource, ShaderCI);
+    if (IncludeSourceFile != nullptr)
+    {
+        HLSLSource += "#include \"";
+        HLSLSource += IncludeSourceFile;
+        HLSLSource += "\"\n";
+    }
+    else
+    {
+        AppendLine1Marker(HLSLSource, ShaderCI.FilePath != nullptr ? ShaderCI.FilePath : ShaderCI.Desc.Name);
+        AppendShaderSourceCode(HLSLSource, ShaderCI);
+    }
 
     return HLSLSource;
 }
