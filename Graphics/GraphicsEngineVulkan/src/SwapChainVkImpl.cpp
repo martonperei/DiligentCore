@@ -74,84 +74,97 @@ void SwapChainVkImpl::CreateSurface()
 
     // Create OS-specific surface. The instance enables only the surface extensions it offers
     // (VulkanUtilities::Instance), and a surface whose extension it lacks has no create function.
-    const auto RequireExtension = [this](const char* ExtName) {
-        if (!m_Instance->IsExtensionEnabled(ExtName))
-            LOG_ERROR_AND_THROW("Failed to create OS-specific surface: the Vulkan instance does not enable ", ExtName);
+    // A window may carry the handles of more than one window system, as an X11 window may carry both
+    // an XCB connection and an Xlib display, so the surface is created through the first window system
+    // whose extension the instance enables, and only a window none of whose window systems has its
+    // extension enabled is refused, naming the extensions.
+    String     MissingExtensions;
+    bool       Attempted                 = false;
+    const auto IsSurfaceExtensionEnabled = [this, &MissingExtensions, &Attempted](const char* ExtName) {
+        if (m_Instance->IsExtensionEnabled(ExtName))
+        {
+            // The caller creates the surface through this extension.
+            Attempted = true;
+            return true;
+        }
+        MissingExtensions += MissingExtensions.empty() ? "" : ", ";
+        MissingExtensions += ExtName;
+        return false;
     };
     VkResult err = VK_ERROR_INITIALIZATION_FAILED;
 #if defined(VK_USE_PLATFORM_WIN32_KHR)
-    if (m_Window.hWnd != NULL)
+    if (m_Window.hWnd != NULL && IsSurfaceExtensionEnabled(VK_KHR_WIN32_SURFACE_EXTENSION_NAME))
     {
         VkWin32SurfaceCreateInfoKHR surfaceCreateInfo{};
         surfaceCreateInfo.sType     = VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR;
         surfaceCreateInfo.hinstance = GetModuleHandle(NULL);
         surfaceCreateInfo.hwnd      = (HWND)m_Window.hWnd;
 
-        RequireExtension(VK_KHR_WIN32_SURFACE_EXTENSION_NAME);
         err = vkCreateWin32SurfaceKHR(m_Instance->GetVkInstance(), &surfaceCreateInfo, nullptr, &m_VkSurface);
     }
 #elif defined(VK_USE_PLATFORM_ANDROID_KHR)
-    if (m_Window.pAWindow != nullptr)
+    if (m_Window.pAWindow != nullptr && IsSurfaceExtensionEnabled(VK_KHR_ANDROID_SURFACE_EXTENSION_NAME))
     {
         VkAndroidSurfaceCreateInfoKHR surfaceCreateInfo{};
         surfaceCreateInfo.sType  = VK_STRUCTURE_TYPE_ANDROID_SURFACE_CREATE_INFO_KHR;
         surfaceCreateInfo.window = (ANativeWindow*)m_Window.pAWindow;
 
-        RequireExtension(VK_KHR_ANDROID_SURFACE_EXTENSION_NAME);
         err = vkCreateAndroidSurfaceKHR(m_Instance->GetVkInstance(), &surfaceCreateInfo, NULL, &m_VkSurface);
     }
 #elif defined(VK_USE_PLATFORM_METAL_EXT)
-    if (void* pLayer = m_Window.GetLayer())
+    void* pLayer = m_Window.GetLayer();
+    if (pLayer != nullptr && IsSurfaceExtensionEnabled(VK_EXT_METAL_SURFACE_EXTENSION_NAME))
     {
         VkMetalSurfaceCreateInfoEXT surfaceCreateInfo{};
         surfaceCreateInfo.sType  = VK_STRUCTURE_TYPE_METAL_SURFACE_CREATE_INFO_EXT;
         surfaceCreateInfo.pLayer = pLayer;
 
-        RequireExtension(VK_EXT_METAL_SURFACE_EXTENSION_NAME);
         err = vkCreateMetalSurfaceEXT(m_Instance->GetVkInstance(), &surfaceCreateInfo, NULL, &m_VkSurface);
     }
 #elif defined(VK_USE_PLATFORM_XCB_KHR) || defined(VK_USE_PLATFORM_XLIB_KHR) || defined(VK_USE_PLATFORM_WAYLAND_KHR)
 
 #    if defined(VK_USE_PLATFORM_XCB_KHR)
-    if (m_Window.pXCBConnection != nullptr && m_Window.WindowId != 0)
+    if (m_Window.pXCBConnection != nullptr && m_Window.WindowId != 0 &&
+        IsSurfaceExtensionEnabled(VK_KHR_XCB_SURFACE_EXTENSION_NAME))
     {
         VkXcbSurfaceCreateInfoKHR surfaceCreateInfo{};
         surfaceCreateInfo.sType      = VK_STRUCTURE_TYPE_XCB_SURFACE_CREATE_INFO_KHR;
         surfaceCreateInfo.connection = static_cast<xcb_connection_t*>(m_Window.pXCBConnection);
         surfaceCreateInfo.window     = m_Window.WindowId;
 
-        RequireExtension(VK_KHR_XCB_SURFACE_EXTENSION_NAME);
         err = vkCreateXcbSurfaceKHR(m_Instance->GetVkInstance(), &surfaceCreateInfo, nullptr, &m_VkSurface);
     }
 #    endif
 
 #    if defined(VK_USE_PLATFORM_XLIB_KHR)
-    if ((m_Window.pDisplay != nullptr && m_Window.WindowId != 0) && m_VkSurface == VK_NULL_HANDLE)
+    if ((m_Window.pDisplay != nullptr && m_Window.WindowId != 0) && m_VkSurface == VK_NULL_HANDLE &&
+        IsSurfaceExtensionEnabled(VK_KHR_XLIB_SURFACE_EXTENSION_NAME))
     {
         VkXlibSurfaceCreateInfoKHR surfaceCreateInfo{};
         surfaceCreateInfo.sType  = VK_STRUCTURE_TYPE_XLIB_SURFACE_CREATE_INFO_KHR;
         surfaceCreateInfo.dpy    = static_cast<Display*>(m_Window.pDisplay);
         surfaceCreateInfo.window = m_Window.WindowId;
 
-        RequireExtension(VK_KHR_XLIB_SURFACE_EXTENSION_NAME);
         err = vkCreateXlibSurfaceKHR(m_Instance->GetVkInstance(), &surfaceCreateInfo, nullptr, &m_VkSurface);
     }
 #    endif
 
 #    if defined(VK_USE_PLATFORM_WAYLAND_KHR)
-    if ((m_Window.pDisplay != nullptr && m_Window.pWaylandSurface != nullptr) && m_VkSurface == VK_NULL_HANDLE)
+    if ((m_Window.pDisplay != nullptr && m_Window.pWaylandSurface != nullptr) && m_VkSurface == VK_NULL_HANDLE &&
+        IsSurfaceExtensionEnabled(VK_KHR_WAYLAND_SURFACE_EXTENSION_NAME))
     {
         VkWaylandSurfaceCreateInfoKHR surfaceCreateInfo{};
         surfaceCreateInfo.sType   = VK_STRUCTURE_TYPE_WAYLAND_SURFACE_CREATE_INFO_KHR;
         surfaceCreateInfo.display = static_cast<struct wl_display*>(m_Window.pDisplay);
         surfaceCreateInfo.surface = static_cast<struct wl_surface*>(m_Window.pWaylandSurface);
 
-        RequireExtension(VK_KHR_WAYLAND_SURFACE_EXTENSION_NAME);
         err = vkCreateWaylandSurfaceKHR(m_Instance->GetVkInstance(), &surfaceCreateInfo, nullptr, &m_VkSurface);
     }
 #    endif
 #endif
 
+    if (!Attempted && !MissingExtensions.empty())
+        LOG_ERROR_AND_THROW("Failed to create OS-specific surface: the Vulkan instance does not enable ", MissingExtensions);
     CHECK_VK_ERROR_AND_THROW(err, "Failed to create OS-specific surface");
 
     if (RefCntAutoPtr<IDeviceContext> pContext = m_wpDeviceContext.Lock())
