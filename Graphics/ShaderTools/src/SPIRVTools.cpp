@@ -25,12 +25,101 @@
  */
 
 #include "SPIRVTools.hpp"
+#include "SPIRVUtils.hpp"
 #include "DebugUtilities.hpp"
+
+// Temporarily disable warning C4127: conditional expression is constant
+// This warning is triggered by SPIRV-Tools headers in ThirdParty
+#ifdef _MSC_VER
+#    pragma warning(push)
+#    pragma warning(disable : 4127)
+#endif
 
 #include "spirv-tools/optimizer.hpp"
 
+// SPIRV-Tools internal headers for custom pass implementation
+#include "source/opt/pass.h"
+#include "source/opt/ir_context.h"
+
+// Restore warning settings
+#ifdef _MSC_VER
+#    pragma warning(pop)
+#endif
+
+#include <string>
+#include <vector>
+
 namespace Diligent
 {
+
+namespace
+{
+
+// A pass that strips the reflection that DXC's -fspv-reflect adds, as SPIRV-Tools' strip-nonsemantic-info
+// pass does: the decorations of SPV_GOOGLE_hlsl_functionality1 and SPV_GOOGLE_user_type, and the extensions
+// that declare them. Unlike that pass, it keeps the module's non-semantic instructions, which that pass
+// strips as well, so that NonSemantic.Shader.DebugInfo.100 debug information reaches the driver.
+class StripReflectionPass final : public spvtools::opt::Pass
+{
+public:
+    static spvtools::Optimizer::PassToken Create()
+    {
+        return spvtools::Optimizer::PassToken{std::make_unique<StripReflectionPass>()};
+    }
+
+    const char* name() const override { return "diligent-strip-reflection"; }
+
+    Status Process() override
+    {
+        std::vector<spvtools::opt::Instruction*> ToRemove;
+
+        bool OtherUsesForDecorateString = false;
+        for (spvtools::opt::Instruction& Inst : context()->module()->annotations())
+        {
+            switch (Inst.opcode())
+            {
+                case spv::Op::OpDecorateStringGOOGLE:
+                case spv::Op::OpMemberDecorateStringGOOGLE:
+                {
+                    // The decoration follows the target, and for a member decoration the member's index.
+                    const uint32_t        DecorationOperand = Inst.opcode() == spv::Op::OpDecorateStringGOOGLE ? 1 : 2;
+                    const spv::Decoration Decoration        = spv::Decoration(Inst.GetSingleWordInOperand(DecorationOperand));
+                    if (Decoration == spv::Decoration::HlslSemanticGOOGLE || Decoration == spv::Decoration::UserTypeGOOGLE)
+                        ToRemove.push_back(&Inst);
+                    else
+                        OtherUsesForDecorateString = true;
+                    break;
+                }
+
+                case spv::Op::OpDecorateId:
+                    if (spv::Decoration(Inst.GetSingleWordInOperand(1)) == spv::Decoration::HlslCounterBufferGOOGLE)
+                        ToRemove.push_back(&Inst);
+                    break;
+
+                default:
+                    break;
+            }
+        }
+
+        for (spvtools::opt::Instruction& Inst : context()->module()->extensions())
+        {
+            const std::string Extension = Inst.GetInOperand(0).AsString();
+            if (Extension == "SPV_GOOGLE_hlsl_functionality1" ||
+                Extension == "SPV_GOOGLE_user_type" ||
+                (Extension == "SPV_GOOGLE_decorate_string" && !OtherUsesForDecorateString))
+            {
+                ToRemove.push_back(&Inst);
+            }
+        }
+
+        for (spvtools::opt::Instruction* Inst : ToRemove)
+            context()->KillInst(Inst);
+
+        return ToRemove.empty() ? Status::SuccessWithoutChange : Status::SuccessWithChange;
+    }
+};
+
+} // namespace
 
 namespace SPIRVToolsInternal
 {
@@ -146,7 +235,13 @@ std::vector<uint32_t> OptimizeSPIRV(const std::vector<uint32_t>& SrcSPIRV, int T
     {
         // Decorations defined in SPV_GOOGLE_hlsl_functionality1 are the only instructions
         // removed by strip-reflect-info pass. SPIRV offsets become INVALID after this operation.
-        SpirvOptimizer.RegisterPass(spvtools::CreateStripReflectInfoPass());
+        // The pass also removes every non-semantic instruction, which byte code with debug information
+        // keeps when the caller allows it.
+        if ((Passes & SPIRV_OPTIMIZATION_FLAG_KEEP_DEBUG_INFO) != 0 &&
+            FindSPIRVExtInstImport(SrcSPIRV, "NonSemantic.Shader.DebugInfo.100") != 0)
+            SpirvOptimizer.RegisterPass(StripReflectionPass::Create());
+        else
+            SpirvOptimizer.RegisterPass(spvtools::CreateStripReflectInfoPass());
     }
 
     std::vector<uint32_t> OptimizedSPIRV;

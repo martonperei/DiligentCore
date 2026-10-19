@@ -309,6 +309,12 @@ PhysicalDevice::PhysicalDevice(const CreateInfo& CI) :
             m_ExtFeatures.DrawIndirectCount = true;
         }
 
+        // Non-semantic instructions were added to the Vulkan 1.3 core.
+        if (m_vkVersion >= VK_API_VERSION_1_3 || IsExtensionSupported(VK_KHR_SHADER_NON_SEMANTIC_INFO_EXTENSION_NAME))
+        {
+            m_ExtFeatures.ShaderNonSemanticInfo = true;
+        }
+
         if (IsExtensionSupported(VK_KHR_MAINTENANCE3_EXTENSION_NAME))
         {
             *NextProp = &m_ExtProperties.Maintenance3;
