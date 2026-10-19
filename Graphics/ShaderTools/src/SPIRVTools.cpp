@@ -197,13 +197,29 @@ spv_target_env SpvTargetEnvFromSPIRV(const std::vector<uint32_t>& SPIRV)
 
 } // namespace SPIRVToolsInternal
 
-std::vector<uint32_t> OptimizeSPIRV(const std::vector<uint32_t>& SrcSPIRV, int TargetEnv, SPIRV_OPTIMIZATION_FLAGS Passes)
+namespace
 {
-    VERIFY_EXPR(Passes != SPIRV_OPTIMIZATION_FLAG_NONE);
 
-    if (TargetEnv == SPV_ENV_MAX)
-        TargetEnv = SPIRVToolsInternal::SpvTargetEnvFromSPIRV(SrcSPIRV);
+constexpr char DebugInfoSetName[] = "NonSemantic.Shader.DebugInfo.100";
 
+// Tests whether a device takes the SPIR-V extensions that the code's debug information declares, as
+// Passes says it does (see SPIRV_OPTIMIZATION_FLAG_KEEP_DEBUG_INFO): SPV_KHR_non_semantic_info, which
+// SPIRV_OPTIMIZATION_FLAG_KEEP_DEBUG_INFO itself stands for, and SPV_KHR_relaxed_extended_instruction,
+// which debug information declares for OpExtInstWithForwardRefsKHR.
+bool DebugInfoExtensionsTaken(const std::vector<uint32_t>& SPIRV, SPIRV_OPTIMIZATION_FLAGS Passes)
+{
+    if ((Passes & SPIRV_OPTIMIZATION_FLAG_KEEP_DEBUG_INFO) == 0)
+        return false;
+    return (Passes & SPIRV_OPTIMIZATION_FLAG_KEEP_DEBUG_INFO_FORWARD_REFS) != 0 ||
+        !SPIRVDeclaresExtension(SPIRV, "SPV_KHR_relaxed_extended_instruction");
+}
+
+std::vector<uint32_t> RunOptimizer(const std::vector<uint32_t>& SrcSPIRV,
+                                   int                          TargetEnv,
+                                   SPIRV_OPTIMIZATION_FLAGS     Passes,
+                                   bool                         HasDebugInfo,
+                                   bool                         KeepDebugInfo)
+{
     spvtools::Optimizer SpirvOptimizer(static_cast<spv_target_env>(TargetEnv));
     SpirvOptimizer.SetMessageConsumer(SPIRVToolsInternal::SpvOptimizerMessageConsumer);
 
@@ -236,17 +252,49 @@ std::vector<uint32_t> OptimizeSPIRV(const std::vector<uint32_t>& SrcSPIRV, int T
         // Decorations defined in SPV_GOOGLE_hlsl_functionality1 are the only instructions
         // removed by strip-reflect-info pass. SPIRV offsets become INVALID after this operation.
         // The pass also removes every non-semantic instruction, which byte code with debug information
-        // keeps when the caller allows it.
-        if ((Passes & SPIRV_OPTIMIZATION_FLAG_KEEP_DEBUG_INFO) != 0 &&
-            FindSPIRVExtInstImport(SrcSPIRV, "NonSemantic.Shader.DebugInfo.100") != 0)
+        // keeps where the device takes it.
+        if (KeepDebugInfo)
+        {
             SpirvOptimizer.RegisterPass(StripReflectionPass::Create());
+        }
         else
+        {
             SpirvOptimizer.RegisterPass(spvtools::CreateStripReflectInfoPass());
+            // The pass removes the debug information's OpExtInstWithForwardRefsKHR instructions but leaves
+            // the SPV_KHR_relaxed_extended_instruction extension that declares them, which a device without
+            // VK_KHR_shader_relaxed_extended_instruction refuses. SPIRV-Tools' fix-opextinst-opcodes pass
+            // removes the extension once no instruction needs it.
+            if (HasDebugInfo)
+                SpirvOptimizer.RegisterPass(spvtools::CreateOpExtInstWithForwardReferenceFixupPass());
+        }
     }
 
     std::vector<uint32_t> OptimizedSPIRV;
     if (!SpirvOptimizer.Run(SrcSPIRV.data(), SrcSPIRV.size(), &OptimizedSPIRV, Options))
         OptimizedSPIRV.clear();
+
+    return OptimizedSPIRV;
+}
+
+} // namespace
+
+std::vector<uint32_t> OptimizeSPIRV(const std::vector<uint32_t>& SrcSPIRV, int TargetEnv, SPIRV_OPTIMIZATION_FLAGS Passes)
+{
+    VERIFY_EXPR(Passes != SPIRV_OPTIMIZATION_FLAG_NONE);
+
+    if (TargetEnv == SPV_ENV_MAX)
+        TargetEnv = SPIRVToolsInternal::SpvTargetEnvFromSPIRV(SrcSPIRV);
+
+    // Debug information is stripped with the reflection unless the device takes every extension it
+    // declares. The passes before the strip, legalization among them, may add a forward reference, so
+    // byte code whose optimized debug information declares an extension the device doesn't take is
+    // optimized again without it.
+    const bool HasDebugInfo  = (Passes & SPIRV_OPTIMIZATION_FLAG_STRIP_REFLECTION) != 0 && FindSPIRVExtInstImport(SrcSPIRV, DebugInfoSetName) != 0;
+    const bool KeepDebugInfo = HasDebugInfo && DebugInfoExtensionsTaken(SrcSPIRV, Passes);
+
+    std::vector<uint32_t> OptimizedSPIRV = RunOptimizer(SrcSPIRV, TargetEnv, Passes, HasDebugInfo, KeepDebugInfo);
+    if (KeepDebugInfo && !OptimizedSPIRV.empty() && !DebugInfoExtensionsTaken(OptimizedSPIRV, Passes))
+        OptimizedSPIRV = RunOptimizer(SrcSPIRV, TargetEnv, Passes, HasDebugInfo, false);
 
     return OptimizedSPIRV;
 }

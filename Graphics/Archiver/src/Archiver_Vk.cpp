@@ -174,15 +174,17 @@ void SerializedPipelineStateImpl::PatchShadersVk(const CreateInfoType& CreateInf
 
         const bool bStripReflection = m_Data.Aux.NoShaderReflection;
         // The stages go to the device as they are, and a device of the archive's Vulkan version takes
-        // NonSemantic.Shader.DebugInfo.100 from version 1.3.
-        const bool bKeepDebugInfo = m_pSerializationDevice->GetVkProperties().VkVersion >= VK_API_VERSION_1_3;
+        // NonSemantic.Shader.DebugInfo.100 from version 1.3. No version includes the extension that
+        // debug information with forward references needs.
+        PipelineStateVkImpl::ShaderDebugInfoSupport DebugInfoSupport;
+        DebugInfoSupport.NonSemanticInfo = m_pSerializationDevice->GetVkProperties().VkVersion >= VK_API_VERSION_1_3;
         PipelineStateVkImpl::RemapOrVerifyShaderResources(ShaderStagesVk,
                                                           Signatures.data(),
                                                           SignaturesCount,
                                                           BindIndexToDescSetIndex,
                                                           false, // bVerifyOnly
                                                           bStripReflection,
-                                                          bKeepDebugInfo,
+                                                          DebugInfoSupport,
                                                           CreateInfo.PSODesc.Name);
     }
 
