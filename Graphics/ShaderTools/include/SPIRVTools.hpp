@@ -43,7 +43,13 @@ enum SPIRV_OPTIMIZATION_FLAGS : Uint32
 
     // Do not validate the byte code before running the passes, also in development builds.
     // Use only for byte code that has already been validated and that the passes do not need to check.
-    SPIRV_OPTIMIZATION_FLAG_SKIP_VALIDATION = 1u << 3u
+    SPIRV_OPTIMIZATION_FLAG_SKIP_VALIDATION = 1u << 3u,
+
+    // With SPIRV_OPTIMIZATION_FLAG_STRIP_REFLECTION, keep the non-semantic instructions of byte code
+    // that carries NonSemantic.Shader.DebugInfo.100 debug information, the debug information among them,
+    // and strip the reflection alone. Use only for byte code that a device with
+    // VK_KHR_shader_non_semantic_info, which Vulkan 1.3 includes, will take.
+    SPIRV_OPTIMIZATION_FLAG_KEEP_DEBUG_INFO = 1u << 4u
 };
 DEFINE_FLAG_ENUM_OPERATORS(SPIRV_OPTIMIZATION_FLAGS);
 
