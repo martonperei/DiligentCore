@@ -1319,6 +1319,18 @@ void EngineFactoryVkImpl::CreateDeviceAndContextsVk(const EngineVkCreateInfo& En
                 LOG_ERROR_MESSAGE("Can not enable extended device features when VK_KHR_get_physical_device_properties2 extension is not supported by device");
         }
 
+        // Non-semantic instructions, such as the debug information of shaders compiled with
+        // SHADER_COMPILE_FLAG_DEBUG_INFO, which Vulkan 1.3 added to the core.
+        if (DeviceExtFeatures.ShaderNonSemanticInfo)
+        {
+            if (PhysicalDevice->GetVkVersion() < VK_API_VERSION_1_3)
+            {
+                VERIFY_EXPR(PhysicalDevice->IsExtensionSupported(VK_KHR_SHADER_NON_SEMANTIC_INFO_EXTENSION_NAME));
+                DeviceExtensions.push_back(VK_KHR_SHADER_NON_SEMANTIC_INFO_EXTENSION_NAME);
+            }
+            EnabledExtFeats.ShaderNonSemanticInfo = true;
+        }
+
         // Extensions required by DLSS
         {
             constexpr std::array<const char*, 3> DLSSReqExts = {

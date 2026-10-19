@@ -74,12 +74,13 @@ public:
         VkPhysicalDevicePipelineExecutablePropertiesFeaturesKHR PipelineExecutableProperties = {};
 
 
-        bool Spirv14              = false; // Ray tracing requires Vulkan 1.2 or SPIRV 1.4 extension
-        bool Spirv15              = false; // DXC shaders with ray tracing requires Vulkan 1.2 with SPIRV 1.5
-        bool SubgroupOps          = false; // Requires Vulkan 1.1
-        bool HasPortabilitySubset = false;
-        bool RenderPass2          = false;
-        bool DrawIndirectCount    = false;
+        bool Spirv14               = false; // Ray tracing requires Vulkan 1.2 or SPIRV 1.4 extension
+        bool Spirv15               = false; // DXC shaders with ray tracing requires Vulkan 1.2 with SPIRV 1.5
+        bool SubgroupOps           = false; // Requires Vulkan 1.1
+        bool HasPortabilitySubset  = false;
+        bool RenderPass2           = false;
+        bool DrawIndirectCount     = false;
+        bool ShaderNonSemanticInfo = false; // Requires Vulkan 1.3 or VK_KHR_shader_non_semantic_info
     };
 
     struct ExtensionProperties
