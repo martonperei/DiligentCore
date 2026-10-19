@@ -173,11 +173,13 @@ void SerializedPipelineStateImpl::PatchShadersVk(const CreateInfoType& CreateInf
         VERIFY_EXPR(DescSetLayoutCount <= MAX_RESOURCE_SIGNATURES * 2);
 
         const bool bStripReflection = m_Data.Aux.NoShaderReflection;
-        // The stages go to the device as they are, and a device of the archive's Vulkan version takes
-        // NonSemantic.Shader.DebugInfo.100 from version 1.3. No version includes the extension that
-        // debug information with forward references needs.
+        // The archive keeps shaders' debug information whole, since which of its extensions a device
+        // takes is known only on the device. The device that unpacks a pipeline strips what it doesn't
+        // take, as it does for a pipeline it creates (PipelineStateVkImpl::InitPipelineLayout), so an
+        // unpacked pipeline and a created one hand it the same shader modules.
         PipelineStateVkImpl::ShaderDebugInfoSupport DebugInfoSupport;
-        DebugInfoSupport.NonSemanticInfo = m_pSerializationDevice->GetVkProperties().VkVersion >= VK_API_VERSION_1_3;
+        DebugInfoSupport.NonSemanticInfo            = true;
+        DebugInfoSupport.RelaxedExtendedInstruction = true;
         PipelineStateVkImpl::RemapOrVerifyShaderResources(ShaderStagesVk,
                                                           Signatures.data(),
                                                           SignaturesCount,
