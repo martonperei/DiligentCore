@@ -35,6 +35,7 @@
 #include "EngineD3D12ImplTraits.hpp"
 #include "QueryBase.hpp"
 #include "QueryManagerD3D12.hpp"
+#include "CommandBufferSubmission.hpp"
 
 namespace Diligent
 {
@@ -80,7 +81,10 @@ private:
     // Begin/end query indices
     std::array<Uint32, 2> m_QueryHeapIndex = {QueryManagerD3D12::InvalidIndex, QueryManagerD3D12::InvalidIndex};
 
-    Uint64 m_QueryEndFenceValue = ~Uint64{0};
+    // The submission of the command list that ends the query, and resolves its data into the
+    // query manager's resolve buffer. The data is available once the GPU has executed that command
+    // list.
+    CommandBufferSubmissionPtr m_pEndSubmission;
 
     QueryManagerD3D12* m_pQueryMgr = nullptr;
 };

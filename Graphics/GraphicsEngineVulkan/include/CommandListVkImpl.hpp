@@ -33,6 +33,7 @@
 #include "EngineVkImplTraits.hpp"
 #include "VulkanUtilities/VulkanHeaders.h"
 #include "CommandListBase.hpp"
+#include "CommandBufferSubmission.hpp"
 
 namespace Diligent
 {
@@ -43,14 +44,16 @@ class CommandListVkImpl final : public CommandListBase<EngineVkImplTraits>
 public:
     using TCommandListBase = CommandListBase<EngineVkImplTraits>;
 
-    CommandListVkImpl(IReferenceCounters*  pRefCounters,
-                      RenderDeviceVkImpl*  pDevice,
-                      DeviceContextVkImpl* pDeferredCtx,
-                      VkCommandBuffer      vkCmdBuff) :
+    CommandListVkImpl(IReferenceCounters*        pRefCounters,
+                      RenderDeviceVkImpl*        pDevice,
+                      DeviceContextVkImpl*       pDeferredCtx,
+                      VkCommandBuffer            vkCmdBuff,
+                      CommandBufferSubmissionPtr pSubmission) :
         // clang-format off
         TCommandListBase {pRefCounters, pDevice, pDeferredCtx},
         m_pDeferredCtx   {pDeferredCtx},
-        m_vkCmdBuff      {vkCmdBuff   }
+        m_vkCmdBuff      {vkCmdBuff   },
+        m_pSubmission    {std::move(pSubmission)}
     // clang-format on
     {
     }
@@ -60,16 +63,21 @@ public:
         VERIFY(m_vkCmdBuff == VK_NULL_HANDLE && !m_pDeferredCtx, "Destroying command list that was never executed");
     }
 
-    void Close(RefCntAutoPtr<IDeviceContext>& outDeferredCtx, VkCommandBuffer& outVkCmdBuff)
+    void Close(RefCntAutoPtr<IDeviceContext>& outDeferredCtx, VkCommandBuffer& outVkCmdBuff, CommandBufferSubmissionPtr& outSubmission)
     {
         outVkCmdBuff   = m_vkCmdBuff;
         outDeferredCtx = std::move(m_pDeferredCtx);
+        outSubmission  = std::move(m_pSubmission);
         m_vkCmdBuff    = VK_NULL_HANDLE;
     }
 
 private:
     RefCntAutoPtr<IDeviceContext> m_pDeferredCtx;
     VkCommandBuffer               m_vkCmdBuff;
+
+    // The submission of the command buffer, if anything recorded in it asked for it, whose fence
+    // value the immediate context that executes the command list sets.
+    CommandBufferSubmissionPtr m_pSubmission;
 };
 
 } // namespace Diligent

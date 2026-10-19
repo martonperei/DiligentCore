@@ -32,6 +32,7 @@
 
 #include "EngineD3D12ImplTraits.hpp"
 #include "CommandListBase.hpp"
+#include "CommandBufferSubmission.hpp"
 
 namespace Diligent
 {
@@ -45,7 +46,8 @@ public:
     CommandListD3D12Impl(IReferenceCounters*                           pRefCounters,
                          RenderDeviceD3D12Impl*                        pDevice,
                          DeviceContextD3D12Impl*                       pDeferredCtx,
-                         RenderDeviceD3D12Impl::PooledCommandContext&& pCmdContext) :
+                         RenderDeviceD3D12Impl::PooledCommandContext&& pCmdContext,
+                         CommandBufferSubmissionPtr                    pSubmission) :
         // clang-format off
         TCommandListBase
         {
@@ -54,7 +56,8 @@ public:
             pDeferredCtx
         },
         m_pDeferredCtx{pDeferredCtx          },
-        m_pCmdContext {std::move(pCmdContext)}
+        m_pCmdContext {std::move(pCmdContext)},
+        m_pSubmission {std::move(pSubmission)}
     // clang-format on
     {
         VERIFY_EXPR(m_pCmdContext);
@@ -73,15 +76,20 @@ public:
         }
     }
 
-    RenderDeviceD3D12Impl::PooledCommandContext Close(RefCntAutoPtr<DeviceContextD3D12Impl>& pDeferredCtx)
+    RenderDeviceD3D12Impl::PooledCommandContext Close(RefCntAutoPtr<DeviceContextD3D12Impl>& pDeferredCtx, CommandBufferSubmissionPtr& pSubmission)
     {
         pDeferredCtx = std::move(m_pDeferredCtx);
+        pSubmission  = std::move(m_pSubmission);
         return std::move(m_pCmdContext);
     }
 
 private:
     RefCntAutoPtr<DeviceContextD3D12Impl>       m_pDeferredCtx;
     RenderDeviceD3D12Impl::PooledCommandContext m_pCmdContext;
+
+    // The submission of the command list, if anything recorded in it asked for it, whose fence
+    // value the immediate context that executes the command list sets.
+    CommandBufferSubmissionPtr m_pSubmission;
 };
 
 } // namespace Diligent

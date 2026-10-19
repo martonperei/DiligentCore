@@ -34,6 +34,7 @@
 #include "DeviceContextBase.hpp"
 #include "RefCntAutoPtr.hpp"
 #include "IndexWrapper.hpp"
+#include "CommandBufferSubmission.hpp"
 
 namespace Diligent
 {
@@ -83,7 +84,24 @@ public:
 
     Uint64 GetSubmittedBuffersCmdQueueMask() const { return m_SubmittedBuffersCmdQueueMask.load(); }
 
+    /// Returns the submission of the command buffer the context is recording, whose fence value
+    /// the context sets when it submits the command buffer, or, in a deferred context, when an
+    /// immediate context executes the command list that holds it.
+    const CommandBufferSubmissionPtr& GetCmdBufferSubmission()
+    {
+        if (!m_pCmdBufferSubmission)
+            m_pCmdBufferSubmission = std::make_shared<CommandBufferSubmission>();
+        return m_pCmdBufferSubmission;
+    }
+
 protected:
+    /// Detaches the submission of the command buffer the context has finished recording, so that
+    /// the next command buffer gets one of its own. Returns null if nothing has asked for it.
+    CommandBufferSubmissionPtr TakeCmdBufferSubmission()
+    {
+        return std::move(m_pCmdBufferSubmission);
+    }
+
     // Should be called at the end of FinishFrame()
     void EndFrame()
     {
@@ -111,6 +129,10 @@ private:
     // were submitted to before FinishFrame() was called. This mask is used to release resources
     // allocated by the context during the frame when FinishFrame() is called.
     std::atomic<Uint64> m_SubmittedBuffersCmdQueueMask{0};
+
+    // The submission of the command buffer the context is recording, created when something first
+    // asks for it.
+    CommandBufferSubmissionPtr m_pCmdBufferSubmission;
 };
 
 } // namespace Diligent

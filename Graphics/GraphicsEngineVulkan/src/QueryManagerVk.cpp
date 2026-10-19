@@ -48,7 +48,7 @@ void QueryManagerVk::QueryPoolInfo::Init(const VulkanUtilities::LogicalDevice& L
 
     m_StaleQueries.resize(m_QueryCount);
     for (Uint32 i = 0; i < m_QueryCount; ++i)
-        m_StaleQueries[i] = i;
+        m_StaleQueries[i].Index = i;
 }
 
 QueryManagerVk::QueryPoolInfo::~QueryPoolInfo()
@@ -81,7 +81,7 @@ Uint32 QueryManagerVk::QueryPoolInfo::Allocate()
     return Index;
 }
 
-void QueryManagerVk::QueryPoolInfo::Discard(Uint32 Index)
+void QueryManagerVk::QueryPoolInfo::Discard(Uint32 Index, CommandBufferSubmissionPtr pSubmission)
 {
     std::lock_guard<std::mutex> Lock{m_QueriesMtx};
 
@@ -89,14 +89,15 @@ void QueryManagerVk::QueryPoolInfo::Discard(Uint32 Index)
     VERIFY(m_vkQueryPool != VK_NULL_HANDLE, "Query pool is not initialized");
     VERIFY(std::find(m_AvailableQueries.begin(), m_AvailableQueries.end(), Index) == m_AvailableQueries.end(),
            "Index ", Index, " already present in available queries list");
-    VERIFY(std::find(m_StaleQueries.begin(), m_StaleQueries.end(), Index) == m_StaleQueries.end(),
+    VERIFY(std::find_if(m_StaleQueries.begin(), m_StaleQueries.end(), [Index](const StaleQuery& Query) { return Query.Index == Index; }) == m_StaleQueries.end(),
            "Index ", Index, " already present in stale queries list");
 
-    m_StaleQueries.push_back(Index);
+    m_StaleQueries.push_back({Index, std::move(pSubmission)});
 }
 
 Uint32 QueryManagerVk::QueryPoolInfo::ResetStaleQueries(const VulkanUtilities::LogicalDevice& LogicalDevice,
-                                                        VulkanUtilities::CommandBuffer&       CmdBuff)
+                                                        VulkanUtilities::CommandBuffer&       CmdBuff,
+                                                        Uint64                                CompletedFenceValue)
 {
     if (m_StaleQueries.empty())
         return 0;
@@ -122,25 +123,45 @@ Uint32 QueryManagerVk::QueryPoolInfo::ResetStaleQueries(const VulkanUtilities::L
 
     // After query pool creation, each query must be reset before it is used.
     // Queries must also be reset between uses (17.2).
+    // A query that a command buffer still being executed uses must not be reset yet: vkResetQueryPool
+    // requires that every submitted command that refers to the query has completed, and a reset
+    // that comes before the command buffer writes the query leaves the query available afterwards.
+    // The query stays stale until a later flush finds its command buffer executed.
+    const auto IsReleased = [CompletedFenceValue](const StaleQuery& Query) {
+        return !Query.pSubmission || Query.pSubmission->IsComplete(CompletedFenceValue);
+    };
+
     Uint32 NumCommands = 0;
-    if (m_StaleQueries.size() == m_QueryCount)
+    if (m_StaleQueries.size() == m_QueryCount && std::all_of(m_StaleQueries.begin(), m_StaleQueries.end(), IsReleased))
     {
         ResetQueries(0, m_QueryCount);
         m_AvailableQueries.resize(m_QueryCount);
         for (Uint32 i = 0; i < m_QueryCount; ++i)
             m_AvailableQueries[i] = i;
         NumCommands = 1;
+        m_StaleQueries.clear();
     }
     else
     {
-        for (Uint32& StaleQuery : m_StaleQueries)
+        size_t NumKept = 0;
+        for (size_t i = 0; i < m_StaleQueries.size(); ++i)
         {
-            ResetQueries(StaleQuery, 1);
-            m_AvailableQueries.push_back(StaleQuery);
+            StaleQuery& Query = m_StaleQueries[i];
+            if (IsReleased(Query))
+            {
+                ResetQueries(Query.Index, 1);
+                m_AvailableQueries.push_back(Query.Index);
+                ++NumCommands;
+            }
+            else
+            {
+                if (NumKept != i)
+                    m_StaleQueries[NumKept] = std::move(Query);
+                ++NumKept;
+            }
         }
-        NumCommands = static_cast<Uint32>(m_StaleQueries.size());
+        m_StaleQueries.resize(NumKept);
     }
-    m_StaleQueries.clear();
 
     return NumCommands;
 }
@@ -276,17 +297,17 @@ Uint32 QueryManagerVk::AllocateQuery(QUERY_TYPE Type)
     return m_Pools[Type].Allocate();
 }
 
-void QueryManagerVk::DiscardQuery(QUERY_TYPE Type, Uint32 Index)
+void QueryManagerVk::DiscardQuery(QUERY_TYPE Type, Uint32 Index, CommandBufferSubmissionPtr pSubmission)
 {
-    m_Pools[Type].Discard(Index);
+    m_Pools[Type].Discard(Index, std::move(pSubmission));
 }
 
-Uint32 QueryManagerVk::ResetStaleQueries(const VulkanUtilities::LogicalDevice& LogicalDevice, VulkanUtilities::CommandBuffer& CmdBuff)
+Uint32 QueryManagerVk::ResetStaleQueries(const VulkanUtilities::LogicalDevice& LogicalDevice, VulkanUtilities::CommandBuffer& CmdBuff, Uint64 CompletedFenceValue)
 {
     Uint32 NumQueriesReset = 0;
     for (QueryPoolInfo& PoolInfo : m_Pools)
     {
-        NumQueriesReset += PoolInfo.ResetStaleQueries(LogicalDevice, CmdBuff);
+        NumQueriesReset += PoolInfo.ResetStaleQueries(LogicalDevice, CmdBuff, CompletedFenceValue);
     }
     return NumQueriesReset;
 }

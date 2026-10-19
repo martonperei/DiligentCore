@@ -36,6 +36,7 @@
 #include "VulkanUtilities/PhysicalDevice.hpp"
 #include "VulkanUtilities/ObjectWrappers.hpp"
 #include "VulkanUtilities/CommandBuffer.hpp"
+#include "CommandBufferSubmission.hpp"
 
 namespace Diligent
 {
@@ -60,7 +61,11 @@ public:
     static constexpr Uint32 InvalidIndex = static_cast<Uint32>(-1);
 
     Uint32 AllocateQuery(QUERY_TYPE Type);
-    void   DiscardQuery(QUERY_TYPE Type, Uint32 Index);
+
+    /// Returns a query to the manager, which resets it, and makes it available again, once the GPU
+    /// has executed the command buffer that last used it, given by pSubmission. A null pSubmission
+    /// means that no command buffer has used the query.
+    void DiscardQuery(QUERY_TYPE Type, Uint32 Index, CommandBufferSubmissionPtr pSubmission);
 
     VkQueryPool GetQueryPool(QUERY_TYPE Type) const
     {
@@ -77,8 +82,11 @@ public:
         return m_TimestampValidBits;
     }
 
+    /// Resets the discarded queries whose command buffers the GPU has executed, given the command
+    /// queue's completed fence value, and makes them available again.
     Uint32 ResetStaleQueries(const VulkanUtilities::LogicalDevice& LogicalDevice,
-                             VulkanUtilities::CommandBuffer&       CmdBuff);
+                             VulkanUtilities::CommandBuffer&       CmdBuff,
+                             Uint64                                CompletedFenceValue);
 
     SoftwareQueueIndex GetCommandQueueId() const
     {
@@ -104,8 +112,8 @@ private:
         // clang-format on
 
         Uint32 Allocate();
-        void   Discard(Uint32 Index);
-        Uint32 ResetStaleQueries(const VulkanUtilities::LogicalDevice& LogicalDevice, VulkanUtilities::CommandBuffer& CmdBuff);
+        void   Discard(Uint32 Index, CommandBufferSubmissionPtr pSubmission);
+        Uint32 ResetStaleQueries(const VulkanUtilities::LogicalDevice& LogicalDevice, VulkanUtilities::CommandBuffer& CmdBuff, Uint64 CompletedFenceValue);
 
         QUERY_TYPE GetType() const
         {
@@ -135,9 +143,19 @@ private:
         Uint32     m_QueryCount          = 0;
         Uint32     m_MaxAllocatedQueries = 0;
 
-        std::mutex          m_QueriesMtx;
-        std::vector<Uint32> m_AvailableQueries;
-        std::vector<Uint32> m_StaleQueries;
+        struct StaleQuery
+        {
+            Uint32 Index = InvalidIndex;
+
+            // The submission of the command buffer that last used the query, which the GPU must
+            // have executed before the query is reset: vkResetQueryPool requires that every
+            // submitted command that refers to the query has completed.
+            CommandBufferSubmissionPtr pSubmission;
+        };
+
+        std::mutex              m_QueriesMtx;
+        std::vector<Uint32>     m_AvailableQueries;
+        std::vector<StaleQuery> m_StaleQueries;
     };
 
     const SoftwareQueueIndex m_CommandQueueId;
