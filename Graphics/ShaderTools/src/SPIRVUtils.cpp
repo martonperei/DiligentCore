@@ -217,4 +217,36 @@ void WarmUpSPIRVCrossGLSLCompiler()
 #endif
 }
 
+uint32_t FindSPIRVExtInstImport(const std::vector<uint32_t>& SPIRV, const char* Name)
+{
+    constexpr size_t HeaderSize = 5;
+    for (size_t i = HeaderSize; i < SPIRV.size();)
+    {
+        const uint32_t WordCount = SPIRV[i] >> 16u;
+        const spv::Op  Op        = static_cast<spv::Op>(SPIRV[i] & 0xFFFFu);
+        if (WordCount == 0 || i + WordCount > SPIRV.size())
+            break;
+
+        // The imports come before the memory model, which every module declares.
+        if (Op == spv::OpMemoryModel)
+            break;
+
+        if (Op == spv::OpExtInstImport && WordCount >= 3)
+        {
+            // The name is a nul-terminated string packed into the words after the result id,
+            // its first byte in the lowest-order byte of the first word.
+            const char* Char = Name;
+            for (size_t c = 0; c < (WordCount - 2) * sizeof(uint32_t); ++c, ++Char)
+            {
+                if (*Char != static_cast<char>((SPIRV[i + 2 + c / 4] >> (c % 4 * 8)) & 0xFFu))
+                    break;
+                if (*Char == '\0')
+                    return SPIRV[i + 1];
+            }
+        }
+        i += WordCount;
+    }
+    return 0;
+}
+
 } // namespace Diligent

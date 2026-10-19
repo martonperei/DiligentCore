@@ -47,4 +47,12 @@ std::vector<uint32_t> PatchImageFormats(const std::vector<uint32_t>&            
 /// Warms up SPIRV-Cross GLSL compiler to initialize internal static data before concurrent use.
 void WarmUpSPIRVCrossGLSLCompiler();
 
+/// Finds the import of an extended instruction set in the SPIRV code.
+///
+/// \param [in] SPIRV - SPIRV code.
+/// \param [in] Name  - Name of the extended instruction set, e.g. "NonSemantic.Shader.DebugInfo.100".
+///
+/// \return The result id of the set's OpExtInstImport, or 0 if the code doesn't import the set.
+uint32_t FindSPIRVExtInstImport(const std::vector<uint32_t>& SPIRV, const char* Name);
+
 } // namespace Diligent

@@ -29,6 +29,7 @@
 
 #include <iomanip>
 #include <cstring>
+#include <unordered_map>
 
 #include "spirv_parser.hpp"
 #include "spirv_cross.hpp"
@@ -37,6 +38,7 @@
 #include "StringTools.hpp"
 #include "Align.hpp"
 #include "ShaderToolsCommon.hpp"
+#include "SPIRVUtils.hpp"
 
 namespace Diligent
 {
@@ -293,6 +295,41 @@ spv::ExecutionModel ShaderTypeToSpvExecutionModel(SHADER_TYPE ShaderType)
     }
 }
 
+// Returns the source language that the module's NonSemantic.Shader.DebugInfo.100 compilation unit
+// names, or spv::SourceLanguageUnknown if the module has no such compilation unit.
+static spv::SourceLanguage GetDebugInfoSourceLanguage(const std::vector<uint32_t>& SPIRV)
+{
+    const uint32_t DebugInfoSet = FindSPIRVExtInstImport(SPIRV, "NonSemantic.Shader.DebugInfo.100");
+    if (DebugInfoSet == 0)
+        return spv::SourceLanguageUnknown;
+
+    constexpr size_t   HeaderSize           = 5;
+    constexpr uint32_t DebugCompilationUnit = 1; // NonSemanticShaderDebugInfo100DebugCompilationUnit
+
+    std::unordered_map<uint32_t, uint32_t> Constants;
+    for (size_t i = HeaderSize; i < SPIRV.size();)
+    {
+        const uint32_t WordCount = SPIRV[i] >> 16u;
+        const spv::Op  Op        = static_cast<spv::Op>(SPIRV[i] & 0xFFFFu);
+        if (WordCount == 0 || i + WordCount > SPIRV.size() || Op == spv::OpFunction)
+            break; // The compilation unit is declared before the first function.
+
+        if (Op == spv::OpConstant && WordCount == 4)
+        {
+            Constants.emplace(SPIRV[i + 2], SPIRV[i + 3]);
+        }
+        else if (Op == spv::OpExtInst && WordCount >= 9 && SPIRV[i + 3] == DebugInfoSet && SPIRV[i + 4] == DebugCompilationUnit)
+        {
+            // DebugCompilationUnit's operands are the ids of its version, its DWARF version,
+            // its source and its source language.
+            const auto Language = Constants.find(SPIRV[i + 8]);
+            return Language != Constants.end() ? static_cast<spv::SourceLanguage>(Language->second) : spv::SourceLanguageUnknown;
+        }
+        i += WordCount;
+    }
+    return spv::SourceLanguageUnknown;
+}
+
 const std::string& GetUBOrSBName(diligent_spirv_cross::Compiler&               Compiler,
                                  const diligent_spirv_cross::Resource&         UB,
                                  const diligent_spirv_cross::ParsedIR::Source& IRSource)
@@ -483,7 +520,19 @@ SPIRVShaderResources::SPIRVShaderResources(IMemoryAllocator&     Allocator,
     parser.parse();
     if (parser.get_parsed_ir().sources.empty())
         LOG_ERROR_AND_THROW("No sources found in SPIRV binary for shader '", CI.Name, "'");
-    const diligent_spirv_cross::ParsedIR::Source& ParsedIRSource = parser.get_parsed_ir().sources.front();
+    diligent_spirv_cross::ParsedIR::Source& ParsedIRSource = parser.get_parsed_ir().sources.front();
+    if (!ParsedIRSource.known)
+    {
+        // A module with NonSemantic.Shader.DebugInfo.100 may have no OpSource, as DXC emits none with
+        // -fspv-debug=vulkan, and SPIRV-Cross then records the debug information's sources without their
+        // language, which the debug information's compilation unit names instead.
+        const spv::SourceLanguage Language = GetDebugInfoSourceLanguage(parser.get_parsed_ir().spirv);
+        if (Language != spv::SourceLanguageUnknown)
+        {
+            ParsedIRSource.lang = Language;
+            ParsedIRSource.hlsl = Language == spv::SourceLanguageHLSL;
+        }
+    }
 
     m_IsHLSLSource = ParsedIRSource.hlsl;
     diligent_spirv_cross::Compiler Compiler{std::move(parser.get_parsed_ir())};
