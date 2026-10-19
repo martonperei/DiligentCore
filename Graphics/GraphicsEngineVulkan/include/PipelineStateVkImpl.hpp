@@ -159,6 +159,11 @@ private:
     // The debug information extensions that the device enabled.
     ShaderDebugInfoSupport GetShaderDebugInfoSupport() const;
 
+    // Strips from the stages the debug information that needs an extension the device doesn't take.
+    static void StripUnsupportedDebugInfo(TShaderStages&                ShaderStages,
+                                          const ShaderDebugInfoSupport& DebugInfoSupport,
+                                          const char*                   PipelineName);
+
     void InitializePipeline(const GraphicsPipelineStateCreateInfo& CreateInfo);
     void InitializePipeline(const ComputePipelineStateCreateInfo& CreateInfo);
     void InitializePipeline(const RayTracingPipelineStateCreateInfo& CreateInfo);

@@ -431,8 +431,13 @@ DILIGENT_TYPED_ENUM(SHADER_COMPILE_FLAGS, Uint32)
     ///
     /// With DXC, the Direct3D12 bytecode embeds its debug information (-Zi -Qembed_debug),
     /// and the SPIRV bytecode carries NonSemantic.Shader.DebugInfo.100 with the full source
-    /// (-Zi -fspv-debug=vulkan-with-source), which the Vulkan backend keeps in the shader
-    /// modules it creates when the device supports VK_KHR_shader_non_semantic_info.
+    /// (-Zi -fspv-debug=vulkan-with-source). The Vulkan backend keeps it in the shader modules
+    /// it creates when the device has enabled every extension it needs:
+    /// VK_KHR_shader_non_semantic_info, which Vulkan 1.3 includes, and, for debug information
+    /// with forward references (OpExtInstWithForwardRefsKHR), which DXC emits for a structure
+    /// with a member function, VK_KHR_shader_relaxed_extended_instruction. Otherwise it strips
+    /// the debug information. An archive keeps the debug information whole, and the device
+    /// that unpacks a pipeline from it decides in the same way.
     /// With FXC, the bytecode carries D3DCOMPILE_DEBUG's debug information.
     ///
     /// The flag does not change the optimization level. Other compilers ignore it.
