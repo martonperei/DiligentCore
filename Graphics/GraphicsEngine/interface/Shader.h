@@ -426,7 +426,19 @@ DILIGENT_TYPED_ENUM(SHADER_COMPILE_FLAGS, Uint32)
     /// Since DXC does not support GLSL, this flag is ignored when SHADER_COMPILER_DXC is used.
     SHADER_COMPILE_FLAG_HLSL_TO_SPIRV_VIA_GLSL = 1u << 4u,
 
-    SHADER_COMPILE_FLAG_LAST = SHADER_COMPILE_FLAG_HLSL_TO_SPIRV_VIA_GLSL
+    /// Compile the shader with source-level debug information, so that a frame debugger
+    /// can step through it in its source language.
+    ///
+    /// With DXC, the Direct3D12 bytecode embeds its debug information (-Zi -Qembed_debug),
+    /// and the SPIRV bytecode carries NonSemantic.Shader.DebugInfo.100 with the full source
+    /// (-Zi -fspv-debug=vulkan-with-source), which the Vulkan backend keeps in the shader
+    /// modules it creates when the device supports VK_KHR_shader_non_semantic_info.
+    /// With FXC, the bytecode carries D3DCOMPILE_DEBUG's debug information.
+    ///
+    /// The flag does not change the optimization level. Other compilers ignore it.
+    SHADER_COMPILE_FLAG_DEBUG_INFO = 1u << 5u,
+
+    SHADER_COMPILE_FLAG_LAST = SHADER_COMPILE_FLAG_DEBUG_INFO
 };
 DEFINE_FLAG_ENUM_OPERATORS(SHADER_COMPILE_FLAGS);
 
