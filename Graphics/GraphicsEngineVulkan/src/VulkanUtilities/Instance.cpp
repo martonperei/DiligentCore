@@ -635,9 +635,9 @@ Instance::Instance(const CreateInfo& CI) :
     }
     else if (IsExtensionAvailable(VK_EXT_DEBUG_UTILS_EXTENSION_NAME))
     {
-        // Graphics debuggers and GPU profilers read debug groups and labels without validation,
-        // so enable the extension whenever it is available. The messenger and object names stay
-        // with validation.
+        // Graphics debuggers and GPU profilers read debug groups, labels and object names without
+        // validation, so enable the extension whenever it is available. The messenger stays with
+        // validation.
         InstanceExtensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
     }
 
@@ -728,6 +728,12 @@ Instance::Instance(const CreateInfo& CI) :
             VK_DEBUG_REPORT_ERROR_BIT_EXT);
         if (!VulkanUtilities::SetupDebugReport(m_vkInstance, flags, nullptr))
             LOG_ERROR_MESSAGE("Failed to initialize debug report. Validation layer message logging will be disabled.");
+    }
+    else if (IsExtensionEnabled(VK_EXT_DEBUG_UTILS_EXTENSION_NAME))
+    {
+        // Without validation the instance still enables VK_EXT_debug_utils for the debug groups that
+        // graphics debuggers read, and they read the objects' names too, so those go through it as well.
+        VulkanUtilities::SetupDebugUtilsObjectNames(m_vkInstance);
     }
 
     // Enumerate physical devices
