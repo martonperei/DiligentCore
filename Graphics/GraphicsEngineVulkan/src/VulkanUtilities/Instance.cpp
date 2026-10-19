@@ -444,24 +444,34 @@ Instance::Instance(const CreateInfo& CI) :
     {
         InstanceExtensions.push_back(VK_KHR_SURFACE_EXTENSION_NAME);
 
-        // Enable surface extensions depending on OS
+        // Enable the OS's surface extensions that the instance offers. A window system's extension
+        // may be missing where another one serves, as when a layer such as RenderDoc's supports
+        // X11 but not Wayland, and an application that draws offscreen needs none of them, so a
+        // missing one is not an error here: the swap chain refuses a window whose surface
+        // extension is not enabled (SwapChainVkImpl::CreateSurface).
+        const auto AddSurfaceExtension = [&](const char* ExtName) {
+            if (IsExtensionAvailable(ExtName))
+                InstanceExtensions.push_back(ExtName);
+            else
+                LOG_INFO_MESSAGE("Surface extension ", ExtName, " is not available");
+        };
 #if defined(VK_USE_PLATFORM_WIN32_KHR)
-        InstanceExtensions.push_back(VK_KHR_WIN32_SURFACE_EXTENSION_NAME);
+        AddSurfaceExtension(VK_KHR_WIN32_SURFACE_EXTENSION_NAME);
 #endif
 #if defined(VK_USE_PLATFORM_ANDROID_KHR)
-        InstanceExtensions.push_back(VK_KHR_ANDROID_SURFACE_EXTENSION_NAME);
+        AddSurfaceExtension(VK_KHR_ANDROID_SURFACE_EXTENSION_NAME);
 #endif
 #if defined(VK_USE_PLATFORM_WAYLAND_KHR)
-        InstanceExtensions.push_back(VK_KHR_WAYLAND_SURFACE_EXTENSION_NAME);
+        AddSurfaceExtension(VK_KHR_WAYLAND_SURFACE_EXTENSION_NAME);
 #endif
 #if defined(VK_USE_PLATFORM_XLIB_KHR)
-        InstanceExtensions.push_back(VK_KHR_XLIB_SURFACE_EXTENSION_NAME);
+        AddSurfaceExtension(VK_KHR_XLIB_SURFACE_EXTENSION_NAME);
 #endif
 #if defined(VK_USE_PLATFORM_XCB_KHR)
-        InstanceExtensions.push_back(VK_KHR_XCB_SURFACE_EXTENSION_NAME);
+        AddSurfaceExtension(VK_KHR_XCB_SURFACE_EXTENSION_NAME);
 #endif
 #if defined(VK_USE_PLATFORM_METAL_EXT)
-        InstanceExtensions.push_back(VK_EXT_METAL_SURFACE_EXTENSION_NAME);
+        AddSurfaceExtension(VK_EXT_METAL_SURFACE_EXTENSION_NAME);
 #endif
     };
 

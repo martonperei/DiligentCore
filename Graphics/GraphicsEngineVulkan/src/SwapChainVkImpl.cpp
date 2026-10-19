@@ -72,7 +72,12 @@ void SwapChainVkImpl::CreateSurface()
         m_VkSurface = VK_NULL_HANDLE;
     }
 
-    // Create OS-specific surface
+    // Create OS-specific surface. The instance enables only the surface extensions it offers
+    // (VulkanUtilities::Instance), and a surface whose extension it lacks has no create function.
+    const auto RequireExtension = [this](const char* ExtName) {
+        if (!m_Instance->IsExtensionEnabled(ExtName))
+            LOG_ERROR_AND_THROW("Failed to create OS-specific surface: the Vulkan instance does not enable ", ExtName);
+    };
     VkResult err = VK_ERROR_INITIALIZATION_FAILED;
 #if defined(VK_USE_PLATFORM_WIN32_KHR)
     if (m_Window.hWnd != NULL)
@@ -82,6 +87,7 @@ void SwapChainVkImpl::CreateSurface()
         surfaceCreateInfo.hinstance = GetModuleHandle(NULL);
         surfaceCreateInfo.hwnd      = (HWND)m_Window.hWnd;
 
+        RequireExtension(VK_KHR_WIN32_SURFACE_EXTENSION_NAME);
         err = vkCreateWin32SurfaceKHR(m_Instance->GetVkInstance(), &surfaceCreateInfo, nullptr, &m_VkSurface);
     }
 #elif defined(VK_USE_PLATFORM_ANDROID_KHR)
@@ -91,6 +97,7 @@ void SwapChainVkImpl::CreateSurface()
         surfaceCreateInfo.sType  = VK_STRUCTURE_TYPE_ANDROID_SURFACE_CREATE_INFO_KHR;
         surfaceCreateInfo.window = (ANativeWindow*)m_Window.pAWindow;
 
+        RequireExtension(VK_KHR_ANDROID_SURFACE_EXTENSION_NAME);
         err = vkCreateAndroidSurfaceKHR(m_Instance->GetVkInstance(), &surfaceCreateInfo, NULL, &m_VkSurface);
     }
 #elif defined(VK_USE_PLATFORM_METAL_EXT)
@@ -100,6 +107,7 @@ void SwapChainVkImpl::CreateSurface()
         surfaceCreateInfo.sType  = VK_STRUCTURE_TYPE_METAL_SURFACE_CREATE_INFO_EXT;
         surfaceCreateInfo.pLayer = pLayer;
 
+        RequireExtension(VK_EXT_METAL_SURFACE_EXTENSION_NAME);
         err = vkCreateMetalSurfaceEXT(m_Instance->GetVkInstance(), &surfaceCreateInfo, NULL, &m_VkSurface);
     }
 #elif defined(VK_USE_PLATFORM_XCB_KHR) || defined(VK_USE_PLATFORM_XLIB_KHR) || defined(VK_USE_PLATFORM_WAYLAND_KHR)
@@ -112,6 +120,7 @@ void SwapChainVkImpl::CreateSurface()
         surfaceCreateInfo.connection = static_cast<xcb_connection_t*>(m_Window.pXCBConnection);
         surfaceCreateInfo.window     = m_Window.WindowId;
 
+        RequireExtension(VK_KHR_XCB_SURFACE_EXTENSION_NAME);
         err = vkCreateXcbSurfaceKHR(m_Instance->GetVkInstance(), &surfaceCreateInfo, nullptr, &m_VkSurface);
     }
 #    endif
@@ -124,6 +133,7 @@ void SwapChainVkImpl::CreateSurface()
         surfaceCreateInfo.dpy    = static_cast<Display*>(m_Window.pDisplay);
         surfaceCreateInfo.window = m_Window.WindowId;
 
+        RequireExtension(VK_KHR_XLIB_SURFACE_EXTENSION_NAME);
         err = vkCreateXlibSurfaceKHR(m_Instance->GetVkInstance(), &surfaceCreateInfo, nullptr, &m_VkSurface);
     }
 #    endif
@@ -136,6 +146,7 @@ void SwapChainVkImpl::CreateSurface()
         surfaceCreateInfo.display = static_cast<struct wl_display*>(m_Window.pDisplay);
         surfaceCreateInfo.surface = static_cast<struct wl_surface*>(m_Window.pWaylandSurface);
 
+        RequireExtension(VK_KHR_WAYLAND_SURFACE_EXTENSION_NAME);
         err = vkCreateWaylandSurfaceKHR(m_Instance->GetVkInstance(), &surfaceCreateInfo, nullptr, &m_VkSurface);
     }
 #    endif
