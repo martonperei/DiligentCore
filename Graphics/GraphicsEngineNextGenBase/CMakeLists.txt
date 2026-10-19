@@ -3,6 +3,7 @@ cmake_minimum_required (VERSION 3.10)
 project(Diligent-GraphicsEngineNextGenBase CXX)
 
 set(INCLUDE
+    include/CommandBufferSubmission.hpp
     include/DeviceContextNextGenBase.hpp
     include/DynamicHeap.hpp
     include/RenderDeviceNextGenBase.hpp
