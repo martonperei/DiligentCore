@@ -6,10 +6,10 @@
 	url = https://github.com/DiligentGraphics/SPIRV-Cross
 [submodule "ThirdParty/SPIRV-Tools"]
 	path = ThirdParty/SPIRV-Tools
-	url = https://github.com/DiligentGraphics/SPIRV-Tools
+	url = https://github.com/KhronosGroup/SPIRV-Tools
 [submodule "ThirdParty/SPIRV-Headers"]
 	path = ThirdParty/SPIRV-Headers
-	url = https://github.com/DiligentGraphics/SPIRV-Headers
+	url = https://github.com/KhronosGroup/SPIRV-Headers
 [submodule "ThirdParty/googletest"]
 	path = ThirdParty/googletest
 	url = https://github.com/DiligentGraphics/googletest
