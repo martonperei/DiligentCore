@@ -137,7 +137,10 @@ HRESULT CompileShader(const char*             Source,
     // dwShaderFlags |= D3D10_SHADER_OPTIMIZATION_LEVEL3;
 #endif
 
-    static_assert(SHADER_COMPILE_FLAG_LAST == 1u << 4u, "Did you add a new shader compile flag? You may need to handle it here.");
+    static_assert(SHADER_COMPILE_FLAG_LAST == 1u << 5u, "Did you add a new shader compile flag? You may need to handle it here.");
+    if (ShaderCI.CompileFlags & SHADER_COMPILE_FLAG_DEBUG_INFO)
+        dwShaderFlags |= D3DCOMPILE_DEBUG;
+
     if (ShaderCI.CompileFlags & SHADER_COMPILE_FLAG_ENABLE_UNBOUNDED_ARRAYS)
         dwShaderFlags |= D3DCOMPILE_ENABLE_UNBOUNDED_DESCRIPTOR_TABLES;
 

@@ -39,7 +39,16 @@
 namespace Diligent
 {
 
-String BuildHLSLSourceString(const ShaderCreateInfo& ShaderCI) noexcept(false);
+/// Builds the HLSL source of the shader: Diligent's HLSL definitions, the shader type's
+/// and the shader's macros, and the shader's own source.
+///
+/// \param [in] ShaderCI           - Shader create info.
+/// \param [in] IncludeSourceFile  - When not null, the source includes the shader's file under
+///                                  this name, relative to the directory of the shader's file,
+///                                  in place of the file's text, so that the compiler reads the
+///                                  file through its include handler, under its own name and
+///                                  with its own lines.
+String BuildHLSLSourceString(const ShaderCreateInfo& ShaderCI, const char* IncludeSourceFile = nullptr) noexcept(false);
 
 String GetHLSLProfileString(SHADER_TYPE ShaderType, ShaderVersion ShaderModel);
 

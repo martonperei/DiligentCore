@@ -82,6 +82,11 @@ struct IDXCompiler
         IShaderSourceInputStreamFactory* pShaderSourceStreamFactory = nullptr;
         IDxcBlob**                       ppBlobOut                  = nullptr;
         IDxcBlob**                       ppCompilerOutput           = nullptr;
+
+        /// When compiling to SPIRV with NonSemantic.Shader.DebugInfo.100 and its source (-fspv-debug=vulkan-with-source),
+        /// add the text of every file that pShaderSourceStreamFactory supplied to its DebugSource. DXC adds the text of
+        /// the main source alone, and reads the text of an included file from the file system by its name.
+        bool AddIncludedSourceText = false;
     };
     /// Compiles HLSL source code to DXIL or SPIRV.
     ///
