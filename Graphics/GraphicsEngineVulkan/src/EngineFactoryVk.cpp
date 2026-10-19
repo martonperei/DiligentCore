@@ -1310,6 +1310,22 @@ void EngineFactoryVkImpl::CreateDeviceAndContextsVk(const EngineVkCreateInfo& En
                 NextExt  = &EnabledExtFeats.PipelineExecutableProperties.pNext;
             }
 
+            // OpExtInstWithForwardRefsKHR, with which the debug information of shaders compiled with
+            // SHADER_COMPILE_FLAG_DEBUG_INFO refers to an instruction it declares later, as DXC's does for a
+            // structure with a member function. A pipeline strips debug information that needs an extension
+            // the device didn't enable (PipelineStateVkImpl::RemapOrVerifyShaderResources).
+            if (DeviceExtFeatures.ShaderNonSemanticInfo &&
+                DeviceExtFeatures.ShaderRelaxedExtendedInstruction.shaderRelaxedExtendedInstruction != VK_FALSE)
+            {
+                VERIFY_EXPR(PhysicalDevice->IsExtensionSupported(VK_KHR_SHADER_RELAXED_EXTENDED_INSTRUCTION_EXTENSION_NAME));
+                DeviceExtensions.push_back(VK_KHR_SHADER_RELAXED_EXTENDED_INSTRUCTION_EXTENSION_NAME);
+
+                EnabledExtFeats.ShaderRelaxedExtendedInstruction = DeviceExtFeatures.ShaderRelaxedExtendedInstruction;
+
+                *NextExt = &EnabledExtFeats.ShaderRelaxedExtendedInstruction;
+                NextExt  = &EnabledExtFeats.ShaderRelaxedExtendedInstruction.pNext;
+            }
+
             // Append user-defined features
             *NextExt = EngineCI.pDeviceExtensionFeatures;
         }

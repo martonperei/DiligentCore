@@ -55,4 +55,12 @@ void WarmUpSPIRVCrossGLSLCompiler();
 /// \return The result id of the set's OpExtInstImport, or 0 if the code doesn't import the set.
 uint32_t FindSPIRVExtInstImport(const std::vector<uint32_t>& SPIRV, const char* Name);
 
+/// Tests whether the SPIRV code declares an extension.
+///
+/// \param [in] SPIRV - SPIRV code.
+/// \param [in] Name  - Name of the extension, e.g. "SPV_KHR_relaxed_extended_instruction".
+///
+/// \return Whether the code has an OpExtension of the extension.
+bool SPIRVDeclaresExtension(const std::vector<uint32_t>& SPIRV, const char* Name);
+
 } // namespace Diligent

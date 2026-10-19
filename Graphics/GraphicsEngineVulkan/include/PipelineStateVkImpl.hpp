@@ -112,6 +112,19 @@ public:
     void DvpValidateResourceLimits() const;
 #endif
 
+    /// The SPIR-V extensions of shaders' NonSemantic.Shader.DebugInfo.100 debug information that the
+    /// device the shader modules go to takes. A stage keeps its debug information only when the device
+    /// takes every extension it needs, and the debug information is stripped otherwise.
+    struct ShaderDebugInfoSupport
+    {
+        /// SPV_KHR_non_semantic_info: Vulkan 1.3, or VK_KHR_shader_non_semantic_info.
+        bool NonSemanticInfo = false;
+
+        /// SPV_KHR_relaxed_extended_instruction, for debug information with forward references:
+        /// VK_KHR_shader_relaxed_extended_instruction with its shaderRelaxedExtendedInstruction feature.
+        bool RelaxedExtendedInstruction = false;
+    };
+
     using TShaderResources         = std::vector<std::shared_ptr<const SPIRVShaderResources>>;
     using TResourceAttibutions     = std::vector<ResourceAttribution>;
     using TBindIndexToDescSetIndex = std::array<Uint32, MAX_RESOURCE_SIGNATURES>;
@@ -122,7 +135,7 @@ public:
         const TBindIndexToDescSetIndex&                      BindIndexToDescSetIndex,
         bool                                                 bVerifyOnly,
         bool                                                 bStripReflection,
-        bool                                                 bKeepDebugInfo,
+        const ShaderDebugInfoSupport&                        DebugInfoSupport,
         const char*                                          PipelineName,
         TShaderResources*                                    pShaderResources     = nullptr,
         TResourceAttibutions*                                pResourceAttibutions = nullptr) noexcept(false);
@@ -142,6 +155,9 @@ private:
 
     void InitPipelineLayout(const PipelineStateCreateInfo& CreateInfo,
                             TShaderStages&                 ShaderStages) noexcept(false);
+
+    // The debug information extensions that the device enabled.
+    ShaderDebugInfoSupport GetShaderDebugInfoSupport() const;
 
     void InitializePipeline(const GraphicsPipelineStateCreateInfo& CreateInfo);
     void InitializePipeline(const ComputePipelineStateCreateInfo& CreateInfo);

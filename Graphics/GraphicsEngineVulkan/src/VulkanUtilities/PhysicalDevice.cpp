@@ -373,6 +373,14 @@ PhysicalDevice::PhysicalDevice(const CreateInfo& CI) :
             m_ExtFeatures.PipelineExecutableProperties.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PIPELINE_EXECUTABLE_PROPERTIES_FEATURES_KHR;
         }
 
+        if (IsExtensionSupported(VK_KHR_SHADER_RELAXED_EXTENDED_INSTRUCTION_EXTENSION_NAME))
+        {
+            *NextFeat = &m_ExtFeatures.ShaderRelaxedExtendedInstruction;
+            NextFeat  = &m_ExtFeatures.ShaderRelaxedExtendedInstruction.pNext;
+
+            m_ExtFeatures.ShaderRelaxedExtendedInstruction.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_RELAXED_EXTENDED_INSTRUCTION_FEATURES_KHR;
+        }
+
         const bool HostImageCopySupported = IsExtensionSupported(VK_EXT_HOST_IMAGE_COPY_EXTENSION_NAME);
         if (HostImageCopySupported)
         {
