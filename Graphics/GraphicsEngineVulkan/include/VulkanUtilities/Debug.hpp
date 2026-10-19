@@ -14,6 +14,10 @@ bool SetupDebugUtils(VkInstance                          instance,
                      const char* const*                  ppIgnoreMessageNames,
                      void*                               pUserData = nullptr);
 
+// Loads the functions that name and tag objects through VK_EXT_debug_utils, for an instance that
+// enables the extension without the messenger SetupDebugUtils() creates.
+void SetupDebugUtilsObjectNames(VkInstance instance);
+
 // Initializes the debug report callback.
 bool SetupDebugReport(VkInstance               instance,
                       VkDebugReportFlagBitsEXT flags,

@@ -244,6 +244,12 @@ bool SetupDebugUtils(VkInstance                          instance,
     return err == VK_SUCCESS;
 }
 
+void SetupDebugUtilsObjectNames(VkInstance instance)
+{
+    SetDebugUtilsObjectNameEXT = reinterpret_cast<PFN_vkSetDebugUtilsObjectNameEXT>(vkGetInstanceProcAddr(instance, "vkSetDebugUtilsObjectNameEXT"));
+    SetDebugUtilsObjectTagEXT  = reinterpret_cast<PFN_vkSetDebugUtilsObjectTagEXT>(vkGetInstanceProcAddr(instance, "vkSetDebugUtilsObjectTagEXT"));
+}
+
 bool SetupDebugReport(VkInstance               instance,
                       VkDebugReportFlagBitsEXT flags,
                       void*                    pUserData)
