@@ -659,15 +659,24 @@ void DeviceContextVkImpl::CommitShaderResources(IShaderResourceBinding* pShaderR
 
         const VkDescriptorSetLayout vkLayout = pSignature->GetVkDescriptorSetLayout(PipelineResourceSignatureVkImpl::DESCRIPTOR_SET_ID_DYNAMIC);
 
-        VkDescriptorSet vkDynamicDescrSet   = VK_NULL_HANDLE;
-        const char*     DynamicDescrSetName = "Dynamic Descriptor Set";
+        VkDescriptorSet vkDynamicDescrSet = VK_NULL_HANDLE;
+        // A dynamic descriptor set is allocated for every draw or dispatch that commits dynamic resources,
+        // so it is named only where the validation layer's messages may name it.
+        const char* DynamicDescrSetName = "";
 #ifdef DILIGENT_DEVELOPMENT
-        String _DynamicDescrSetName{DynamicDescrSetName};
-        _DynamicDescrSetName.append(" (");
-        _DynamicDescrSetName.append(pSignature->GetDesc().Name);
-        _DynamicDescrSetName += ')';
-        DynamicDescrSetName = _DynamicDescrSetName.c_str();
+        String _DynamicDescrSetName;
 #endif
+        if (VulkanUtilities::TransientObjectNamesEnabled())
+        {
+            DynamicDescrSetName = "Dynamic Descriptor Set";
+#ifdef DILIGENT_DEVELOPMENT
+            _DynamicDescrSetName = DynamicDescrSetName;
+            _DynamicDescrSetName.append(" (");
+            _DynamicDescrSetName.append(pSignature->GetDesc().Name);
+            _DynamicDescrSetName += ')';
+            DynamicDescrSetName = _DynamicDescrSetName.c_str();
+#endif
+        }
         // Allocate vulkan descriptor set for dynamic resources
         vkDynamicDescrSet = AllocateDynamicDescriptorSet(vkLayout, DynamicDescrSetName);
 
