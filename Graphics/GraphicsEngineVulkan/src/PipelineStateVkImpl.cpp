@@ -839,7 +839,7 @@ void PipelineStateVkImpl::RemapOrVerifyShaderResources(
     const TBindIndexToDescSetIndex&                      BindIndexToDescSetIndex,
     bool                                                 bVerifyOnly,
     bool                                                 bStripReflection,
-    bool                                                 bKeepDebugInfo,
+    const ShaderDebugInfoSupport&                        DebugInfoSupport,
     const char*                                          PipelineName,
     TShaderResources*                                    pDvpShaderResources,
     TResourceAttibutions*                                pDvpResourceAttibutions) noexcept(false)
@@ -1022,9 +1022,12 @@ void PipelineStateVkImpl::RemapOrVerifyShaderResources(
                 // NB: SPIRV offsets become INVALID after this operation.
                 SPIRV_OPTIMIZATION_FLAGS OptimizationFlags = SPIRV_OPTIMIZATION_FLAG_STRIP_REFLECTION;
 
-                // A shader compiled with debug information keeps it where the device takes it.
-                if (bKeepDebugInfo)
+                // A shader compiled with debug information keeps it where the device takes every extension
+                // it needs.
+                if (DebugInfoSupport.NonSemanticInfo)
                     OptimizationFlags |= SPIRV_OPTIMIZATION_FLAG_KEEP_DEBUG_INFO;
+                if (DebugInfoSupport.RelaxedExtendedInstruction)
+                    OptimizationFlags |= SPIRV_OPTIMIZATION_FLAG_KEEP_DEBUG_INFO_FORWARD_REFS;
 
                 // A uniform buffer converted to push constants, here or when the pipeline was archived, changes
                 // the byte code beyond binding and descriptor set numbers. Such a stage is validated again, and
@@ -1049,6 +1052,16 @@ void PipelineStateVkImpl::RemapOrVerifyShaderResources(
             }
         }
     }
+}
+
+PipelineStateVkImpl::ShaderDebugInfoSupport PipelineStateVkImpl::GetShaderDebugInfoSupport() const
+{
+    const VulkanUtilities::PhysicalDevice::ExtensionFeatures& EnabledExtFeats = GetDevice()->GetLogicalDevice().GetEnabledExtFeatures();
+
+    ShaderDebugInfoSupport Support;
+    Support.NonSemanticInfo            = EnabledExtFeats.ShaderNonSemanticInfo;
+    Support.RelaxedExtendedInstruction = EnabledExtFeats.ShaderRelaxedExtendedInstruction.shaderRelaxedExtendedInstruction != VK_FALSE;
+    return Support;
 }
 
 void PipelineStateVkImpl::InitPipelineLayout(const PipelineStateCreateInfo& CreateInfo, TShaderStages& ShaderStages) noexcept(false)
@@ -1078,15 +1091,14 @@ void PipelineStateVkImpl::InitPipelineLayout(const PipelineStateCreateInfo& Crea
 
         // Note that we always need to strip reflection information when it is present.
         // Push constant conversion from uniform buffer is also performed here if needed.
-        // NonSemantic.Shader.DebugInfo.100 needs VK_KHR_shader_non_semantic_info.
-        const bool KeepDebugInfo = GetDevice()->GetLogicalDevice().GetEnabledExtFeatures().ShaderNonSemanticInfo;
+        const ShaderDebugInfoSupport DebugInfoSupport = GetShaderDebugInfoSupport();
         RemapOrVerifyShaderResources(ShaderStages,
                                      m_Signatures,
                                      m_SignatureCount,
                                      BindIndexToDescSetIndex,
                                      VerifyBindings, // VerifyOnly
                                      true,           // bStripReflection
-                                     KeepDebugInfo,
+                                     DebugInfoSupport,
                                      m_Desc.Name,
 #ifdef DILIGENT_DEVELOPMENT
                                      &m_ShaderResources, &m_ResourceAttibutions

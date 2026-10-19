@@ -206,36 +206,58 @@ void WarmUpSPIRVCrossGLSLCompiler()
 #endif
 }
 
-uint32_t FindSPIRVExtInstImport(const std::vector<uint32_t>& SPIRV, const char* Name)
+namespace
+{
+
+// Tests whether the string literal in SPIRV[First, End) is Name. A literal is nul-terminated and
+// packs its first byte into the lowest-order byte of its first word.
+bool SPIRVLiteralEquals(const std::vector<uint32_t>& SPIRV, size_t First, size_t End, const char* Name)
+{
+    const char* Char = Name;
+    for (size_t c = 0; c < (End - First) * sizeof(uint32_t); ++c, ++Char)
+    {
+        if (*Char != static_cast<char>((SPIRV[First + c / 4] >> (c % 4 * 8)) & 0xFFu))
+            return false;
+        if (*Char == '\0')
+            return true;
+    }
+    return false;
+}
+
+// Finds the first instruction with the opcode before the memory model whose string literal starts
+// LiteralOffset words into it and is Name, and returns its position, or 0 if there is none. The
+// capabilities, the extensions and the imports come before the memory model, which every module
+// declares.
+size_t FindSPIRVPreambleInstruction(const std::vector<uint32_t>& SPIRV, spv::Op Opcode, uint32_t LiteralOffset, const char* Name)
 {
     constexpr size_t HeaderSize = 5;
     for (size_t i = HeaderSize; i < SPIRV.size();)
     {
         const uint32_t WordCount = SPIRV[i] >> 16u;
         const spv::Op  Op        = static_cast<spv::Op>(SPIRV[i] & 0xFFFFu);
-        if (WordCount == 0 || i + WordCount > SPIRV.size())
+        if (WordCount == 0 || i + WordCount > SPIRV.size() || Op == spv::OpMemoryModel)
             break;
 
-        // The imports come before the memory model, which every module declares.
-        if (Op == spv::OpMemoryModel)
-            break;
-
-        if (Op == spv::OpExtInstImport && WordCount >= 3)
-        {
-            // The name is a nul-terminated string packed into the words after the result id,
-            // its first byte in the lowest-order byte of the first word.
-            const char* Char = Name;
-            for (size_t c = 0; c < (WordCount - 2) * sizeof(uint32_t); ++c, ++Char)
-            {
-                if (*Char != static_cast<char>((SPIRV[i + 2 + c / 4] >> (c % 4 * 8)) & 0xFFu))
-                    break;
-                if (*Char == '\0')
-                    return SPIRV[i + 1];
-            }
-        }
+        if (Op == Opcode && WordCount > LiteralOffset && SPIRVLiteralEquals(SPIRV, i + LiteralOffset, i + WordCount, Name))
+            return i;
         i += WordCount;
     }
     return 0;
+}
+
+} // namespace
+
+uint32_t FindSPIRVExtInstImport(const std::vector<uint32_t>& SPIRV, const char* Name)
+{
+    // The set's name follows the import's result id.
+    const size_t Pos = FindSPIRVPreambleInstruction(SPIRV, spv::OpExtInstImport, 2, Name);
+    return Pos != 0 ? SPIRV[Pos + 1] : 0;
+}
+
+bool SPIRVDeclaresExtension(const std::vector<uint32_t>& SPIRV, const char* Name)
+{
+    // The extension's name is the instruction's only operand.
+    return FindSPIRVPreambleInstruction(SPIRV, spv::OpExtension, 1, Name) != 0;
 }
 
 } // namespace Diligent

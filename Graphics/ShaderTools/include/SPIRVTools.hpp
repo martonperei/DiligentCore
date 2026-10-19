@@ -47,9 +47,17 @@ enum SPIRV_OPTIMIZATION_FLAGS : Uint32
 
     // With SPIRV_OPTIMIZATION_FLAG_STRIP_REFLECTION, keep the non-semantic instructions of byte code
     // that carries NonSemantic.Shader.DebugInfo.100 debug information, the debug information among them,
-    // and strip the reflection alone. Use only for byte code that a device with
-    // VK_KHR_shader_non_semantic_info, which Vulkan 1.3 includes, will take.
-    SPIRV_OPTIMIZATION_FLAG_KEEP_DEBUG_INFO = 1u << 4u
+    // and strip the reflection alone, when the device takes every SPIR-V extension the debug information
+    // needs: SPV_KHR_non_semantic_info, which this flag says the device takes (VK_KHR_shader_non_semantic_info,
+    // which Vulkan 1.3 includes), and, for debug information with forward references, which it declares with
+    // SPV_KHR_relaxed_extended_instruction, SPIRV_OPTIMIZATION_FLAG_KEEP_DEBUG_INFO_FORWARD_REFS.
+    // Otherwise the debug information is stripped with the reflection, and so are the extensions it declared.
+    SPIRV_OPTIMIZATION_FLAG_KEEP_DEBUG_INFO = 1u << 4u,
+
+    // With SPIRV_OPTIMIZATION_FLAG_KEEP_DEBUG_INFO, the device also takes OpExtInstWithForwardRefsKHR
+    // (VK_KHR_shader_relaxed_extended_instruction with its shaderRelaxedExtendedInstruction feature), which
+    // debug information uses for a forward reference, as DXC's does for a structure with a member function.
+    SPIRV_OPTIMIZATION_FLAG_KEEP_DEBUG_INFO_FORWARD_REFS = 1u << 5u
 };
 DEFINE_FLAG_ENUM_OPERATORS(SPIRV_OPTIMIZATION_FLAGS);
 
