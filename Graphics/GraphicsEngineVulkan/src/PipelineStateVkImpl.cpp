@@ -45,6 +45,7 @@
 
 #if !DILIGENT_NO_HLSL
 #    include "SPIRVTools.hpp"
+#    include "SPIRVUtils.hpp"
 #endif
 
 namespace Diligent
@@ -832,6 +833,25 @@ PipelineResourceSignatureDescWrapper PipelineStateVkImpl::GetDefaultResourceSign
     return SignDesc;
 }
 
+#if !DILIGENT_NO_HLSL
+namespace
+{
+
+// The flags with which OptimizeSPIRV() keeps the debug information of a stage that strips its reflection
+// where the device takes every extension the debug information needs.
+SPIRV_OPTIMIZATION_FLAGS DebugInfoOptimizationFlags(const PipelineStateVkImpl::ShaderDebugInfoSupport& DebugInfoSupport)
+{
+    SPIRV_OPTIMIZATION_FLAGS Flags = SPIRV_OPTIMIZATION_FLAG_NONE;
+    if (DebugInfoSupport.NonSemanticInfo)
+        Flags |= SPIRV_OPTIMIZATION_FLAG_KEEP_DEBUG_INFO;
+    if (DebugInfoSupport.RelaxedExtendedInstruction)
+        Flags |= SPIRV_OPTIMIZATION_FLAG_KEEP_DEBUG_INFO_FORWARD_REFS;
+    return Flags;
+}
+
+} // namespace
+#endif
+
 void PipelineStateVkImpl::RemapOrVerifyShaderResources(
     TShaderStages&                                       ShaderStages,
     const RefCntAutoPtr<PipelineResourceSignatureVkImpl> pSignatures[],
@@ -1020,14 +1040,9 @@ void PipelineStateVkImpl::RemapOrVerifyShaderResources(
                 // We have to strip reflection instructions to fix the following validation error:
                 //     SPIR-V module not valid: DecorateStringGOOGLE requires one of the following extensions: SPV_GOOGLE_decorate_string
                 // NB: SPIRV offsets become INVALID after this operation.
-                SPIRV_OPTIMIZATION_FLAGS OptimizationFlags = SPIRV_OPTIMIZATION_FLAG_STRIP_REFLECTION;
-
                 // A shader compiled with debug information keeps it where the device takes every extension
                 // it needs.
-                if (DebugInfoSupport.NonSemanticInfo)
-                    OptimizationFlags |= SPIRV_OPTIMIZATION_FLAG_KEEP_DEBUG_INFO;
-                if (DebugInfoSupport.RelaxedExtendedInstruction)
-                    OptimizationFlags |= SPIRV_OPTIMIZATION_FLAG_KEEP_DEBUG_INFO_FORWARD_REFS;
+                SPIRV_OPTIMIZATION_FLAGS OptimizationFlags = SPIRV_OPTIMIZATION_FLAG_STRIP_REFLECTION | DebugInfoOptimizationFlags(DebugInfoSupport);
 
                 // A uniform buffer converted to push constants, here or when the pipeline was archived, changes
                 // the byte code beyond binding and descriptor set numbers. Such a stage is validated again, and
@@ -1107,6 +1122,40 @@ void PipelineStateVkImpl::InitPipelineLayout(const PipelineStateCreateInfo& Crea
 #endif
         );
     }
+    else
+    {
+        // A pipeline unpacked from an archive whose reflection was stripped has its stages as the
+        // archiver left them, with their debug information whole (Archiver_Vk.cpp), so the debug
+        // information the device doesn't take is stripped here, as RemapOrVerifyShaderResources()
+        // strips it from the stages of any other pipeline.
+        StripUnsupportedDebugInfo(ShaderStages, GetShaderDebugInfoSupport(), m_Desc.Name);
+    }
+}
+
+void PipelineStateVkImpl::StripUnsupportedDebugInfo(TShaderStages&                ShaderStages,
+                                                    const ShaderDebugInfoSupport& DebugInfoSupport,
+                                                    const char*                   PipelineName)
+{
+#if !DILIGENT_NO_HLSL
+    // The reflection is gone already, so the strip leaves all but the debug information as it is.
+    const SPIRV_OPTIMIZATION_FLAGS OptimizationFlags =
+        SPIRV_OPTIMIZATION_FLAG_STRIP_REFLECTION | SPIRV_OPTIMIZATION_FLAG_SKIP_VALIDATION | DebugInfoOptimizationFlags(DebugInfoSupport);
+    for (ShaderStageInfo& Stage : ShaderStages)
+    {
+        for (ShaderStageInfo::Item& StageItem : Stage.Items)
+        {
+            if (FindSPIRVExtInstImport(StageItem.SPIRV, "NonSemantic.Shader.DebugInfo.100") == 0)
+                continue;
+
+            std::vector<uint32_t> StrippedSPIRV = OptimizeSPIRV(StageItem.SPIRV, OptimizationFlags);
+            if (!StrippedSPIRV.empty())
+                StageItem.SPIRV = std::move(StrippedSPIRV);
+            else
+                LOG_ERROR("Failed to strip debug information from shader '", StageItem.pShader->GetDesc().Name, "' of pipeline '",
+                          (PipelineName != nullptr ? PipelineName : "<null>"), "'. This may indicate a problem with the byte code.");
+        }
+    }
+#endif
 }
 
 template <typename PSOCreateInfoType>
