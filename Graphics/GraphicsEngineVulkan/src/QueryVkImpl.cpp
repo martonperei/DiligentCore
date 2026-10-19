@@ -63,12 +63,12 @@ void QueryVkImpl::DiscardQueries()
         if (QueryPoolIdx != QueryManagerVk::InvalidIndex)
         {
             VERIFY_EXPR(m_pQueryMgr != nullptr);
-            m_pQueryMgr->DiscardQuery(m_Desc.Type, QueryPoolIdx);
+            m_pQueryMgr->DiscardQuery(m_Desc.Type, QueryPoolIdx, m_pSubmission);
             QueryPoolIdx = QueryManagerVk::InvalidIndex;
         }
     }
-    m_pQueryMgr          = nullptr;
-    m_QueryEndFenceValue = ~Uint64{0};
+    m_pQueryMgr = nullptr;
+    m_pSubmission.reset();
 }
 
 void QueryVkImpl::Invalidate()
@@ -107,7 +107,12 @@ bool QueryVkImpl::OnBeginQuery(DeviceContextVkImpl* pContext)
 {
     TQueryBase::OnBeginQuery(pContext);
 
-    return AllocateQueries();
+    if (!AllocateQueries())
+        return false;
+
+    // A duration query writes its first index here, in the command buffer being recorded.
+    m_pSubmission = pContext->GetCmdBufferSubmission();
+    return true;
 }
 
 bool QueryVkImpl::OnEndQuery(DeviceContextVkImpl* pContext)
@@ -127,8 +132,11 @@ bool QueryVkImpl::OnEndQuery(DeviceContextVkImpl* pContext)
     }
 
     VERIFY_EXPR(m_pQueryMgr != nullptr);
-    SoftwareQueueIndex CmdQueueId = m_pQueryMgr->GetCommandQueueId();
-    m_QueryEndFenceValue          = m_pDevice->GetNextFenceValue(CmdQueueId);
+    // The query's data is available once the GPU has executed the command buffer being recorded.
+    // Its fence value is only known when the context submits it: the value the queue is going to
+    // signal next may be taken by another submission before that, such as a transient command buffer
+    // that uploads a resource's initial data.
+    m_pSubmission = pContext->GetCmdBufferSubmission();
 
     return true;
 }
@@ -369,7 +377,7 @@ bool QueryVkImpl::GetData(void* pData, Uint32 DataSize, bool AutoInvalidate)
     const SoftwareQueueIndex CmdQueueId          = m_pQueryMgr->GetCommandQueueId();
     const Uint64             CompletedFenceValue = m_pDevice->GetCompletedFenceValue(CmdQueueId);
     bool                     DataAvailable       = false;
-    if (CompletedFenceValue >= m_QueryEndFenceValue)
+    if (m_pSubmission && m_pSubmission->IsComplete(CompletedFenceValue))
     {
         const VulkanUtilities::LogicalDevice& LogicalDevice = m_pDevice->GetLogicalDevice();
         VkQueryPool                           vkQueryPool   = m_pQueryMgr->GetQueryPool(m_Desc.Type);

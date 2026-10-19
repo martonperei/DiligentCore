@@ -1034,13 +1034,19 @@ void DeviceContextD3D12Impl::Flush(bool                 RequestNewCmdCtx,
     // TODO: use small_vector
     std::vector<RenderDeviceD3D12Impl::PooledCommandContext> Contexts;
     Contexts.reserve(size_t{NumCommandLists} + 1);
+    // The submissions of the command lists that something recorded in them asked for
+    std::vector<CommandBufferSubmissionPtr> Submissions;
 
     // First, execute current context
     if (m_CurrCmdCtx)
     {
         VERIFY(!IsDeferred(), "Deferred contexts cannot execute command lists directly");
         if (m_State.NumCommands != 0)
+        {
             Contexts.emplace_back(std::move(m_CurrCmdCtx));
+            if (CommandBufferSubmissionPtr pSubmission = TakeCmdBufferSubmission())
+                Submissions.emplace_back(std::move(pSubmission));
+        }
         else if (!RequestNewCmdCtx) // Reuse existing context instead of disposing and creating new one.
             m_pDevice->DisposeCommandContext(std::move(m_CurrCmdCtx));
     }
@@ -1051,15 +1057,22 @@ void DeviceContextD3D12Impl::Flush(bool                 RequestNewCmdCtx,
         CommandListD3D12Impl* const pCmdListD3D12 = ClassPtrCast<CommandListD3D12Impl>(ppCommandLists[i]);
 
         RefCntAutoPtr<DeviceContextD3D12Impl> pDeferredCtx;
-        Contexts.emplace_back(pCmdListD3D12->Close(pDeferredCtx));
+        CommandBufferSubmissionPtr            pSubmission;
+        Contexts.emplace_back(pCmdListD3D12->Close(pDeferredCtx, pSubmission));
         VERIFY(Contexts.back() && pDeferredCtx, "Trying to execute empty command buffer");
+        if (pSubmission)
+            Submissions.emplace_back(std::move(pSubmission));
         // Set the bit in the deferred context cmd queue mask corresponding to the cmd queue of this context
         pDeferredCtx->UpdateSubmittedBuffersCmdQueueMask(GetCommandQueueId());
     }
 
     if (!Contexts.empty())
     {
-        m_pDevice->CloseAndExecuteCommandContexts(GetCommandQueueId(), static_cast<Uint32>(Contexts.size()), Contexts.data(), true, &m_SignalFences, &m_WaitFences);
+        const Uint64 SubmittedFenceValue = m_pDevice->CloseAndExecuteCommandContexts(GetCommandQueueId(), static_cast<Uint32>(Contexts.size()), Contexts.data(), true, &m_SignalFences, &m_WaitFences);
+        // The queries these command lists end are ready once the queue reaches the fence value of
+        // this submission.
+        for (const CommandBufferSubmissionPtr& pSubmission : Submissions)
+            pSubmission->SetFenceValue(SubmittedFenceValue);
 
 #ifdef DILIGENT_DEBUG
         for (const RenderDeviceD3D12Impl::PooledCommandContext& Ctx : Contexts)
@@ -2500,7 +2513,7 @@ void DeviceContextD3D12Impl::FinishCommandList(ICommandList** ppCommandList)
     DEV_CHECK_ERR(IsDeferred(), "Only deferred context can record command list");
     DEV_CHECK_ERR(m_pActiveRenderPass == nullptr, "Finishing command list inside an active render pass.");
 
-    CommandListD3D12Impl* pCmdListD3D12(NEW_RC_OBJ(m_CmdListAllocator, "CommandListD3D12Impl instance", CommandListD3D12Impl)(m_pDevice, this, std::move(m_CurrCmdCtx)));
+    CommandListD3D12Impl* pCmdListD3D12(NEW_RC_OBJ(m_CmdListAllocator, "CommandListD3D12Impl instance", CommandListD3D12Impl)(m_pDevice, this, std::move(m_CurrCmdCtx), TakeCmdBufferSubmission()));
     pCmdListD3D12->QueryInterface(IID_CommandList, ppCommandList);
 
     // We can't request new cmd context because we don't know the command queue type

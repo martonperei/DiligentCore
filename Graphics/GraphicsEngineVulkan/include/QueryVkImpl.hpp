@@ -74,7 +74,10 @@ private:
 
     std::array<Uint32, 2> m_QueryPoolIndex = {QueryManagerVk::InvalidIndex, QueryManagerVk::InvalidIndex};
 
-    Uint64 m_QueryEndFenceValue = ~Uint64{0};
+    // The submission of the command buffer that last wrote the query's indices: the one that ends
+    // the query, or until the query is ended, the one that begins it. The query's data is available,
+    // and its indices may be reset, once the GPU has executed that command buffer.
+    CommandBufferSubmissionPtr m_pSubmission;
 
     // Timestamp counters may expose fewer than 64 valid bits. Keep the last extended
     // counter so wraps can be detected across query reuse.

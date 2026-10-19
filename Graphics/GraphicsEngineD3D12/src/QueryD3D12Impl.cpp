@@ -83,8 +83,8 @@ void QueryD3D12Impl::DiscardQueries()
             HeapIdx = QueryManagerD3D12::InvalidIndex;
         }
     }
-    m_pQueryMgr          = nullptr;
-    m_QueryEndFenceValue = ~Uint64{0};
+    m_pQueryMgr = nullptr;
+    m_pEndSubmission.reset();
 }
 
 void QueryD3D12Impl::Invalidate()
@@ -117,8 +117,11 @@ bool QueryD3D12Impl::OnEndQuery(DeviceContextD3D12Impl* pContext)
     }
 
     VERIFY_EXPR(m_pQueryMgr != nullptr);
-    SoftwareQueueIndex CmdQueueId = m_pQueryMgr->GetCommandQueueId();
-    m_QueryEndFenceValue          = m_pDevice->GetNextFenceValue(CmdQueueId);
+    // The query's data is available once the GPU has executed the command list being recorded,
+    // which resolves it. Its fence value is only known when the context submits it: the value the
+    // queue is going to signal next may be taken by another submission before that, such as a
+    // transient command list that uploads a resource's initial data.
+    m_pEndSubmission = pContext->GetCmdBufferSubmission();
 
     return true;
 }
@@ -130,7 +133,7 @@ bool QueryD3D12Impl::GetData(void* pData, Uint32 DataSize, bool AutoInvalidate)
     VERIFY_EXPR(m_pQueryMgr != nullptr);
     SoftwareQueueIndex CmdQueueId          = m_pQueryMgr->GetCommandQueueId();
     Uint64             CompletedFenceValue = m_pDevice->GetCompletedFenceValue(CmdQueueId);
-    if (CompletedFenceValue >= m_QueryEndFenceValue)
+    if (m_pEndSubmission && m_pEndSubmission->IsComplete(CompletedFenceValue))
     {
         auto GetTimestampFrequency = [this](SoftwareQueueIndex CmdQueueId) //
         {

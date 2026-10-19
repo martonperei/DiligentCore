@@ -106,7 +106,7 @@ DeviceContextVkImpl::DeviceContextVkImpl(IReferenceCounters*      pRefCounters,
         PrepareCommandPool(GetCommandQueueId());
         m_pQueryMgr = &pDeviceVkImpl->GetQueryMgr(GetCommandQueueId());
         EnsureVkCmdBuffer();
-        m_State.NumCommands += m_pQueryMgr->ResetStaleQueries(m_pDevice->GetLogicalDevice(), m_CommandBuffer);
+        m_State.NumCommands += m_pQueryMgr->ResetStaleQueries(m_pDevice->GetLogicalDevice(), m_CommandBuffer, m_pDevice->GetCompletedFenceValue(GetCommandQueueId()));
         // Submit the command buffer now, so that a context that records nothing else
         // does not hold outstanding commands until the application flushes it.
         Flush();
@@ -1573,8 +1573,10 @@ void DeviceContextVkImpl::Flush(Uint32               NumCommandLists,
     // TODO: replace with small_vector
     std::vector<VkCommandBuffer>               vkCmdBuffs;
     std::vector<RefCntAutoPtr<IDeviceContext>> DeferredCtxs;
+    std::vector<CommandBufferSubmissionPtr>    DeferredSubmissions;
     vkCmdBuffs.reserve(size_t{NumCommandLists} + 1);
     DeferredCtxs.reserve(size_t{NumCommandLists} + 1);
+    DeferredSubmissions.reserve(NumCommandLists);
 
     VkCommandBuffer vkCmdBuff = m_CommandBuffer.GetVkCmdBuffer();
     if (vkCmdBuff != VK_NULL_HANDLE)
@@ -1584,7 +1586,7 @@ void DeviceContextVkImpl::Flush(Uint32               NumCommandLists,
             VERIFY_EXPR(!IsDeferred());
             // Note that vkCmdResetQueryPool must be called outside of a render pass,
             // so it is better to reset all queries at once at the end of the command buffer.
-            m_State.NumCommands += m_pQueryMgr->ResetStaleQueries(m_pDevice->GetLogicalDevice(), m_CommandBuffer);
+            m_State.NumCommands += m_pQueryMgr->ResetStaleQueries(m_pDevice->GetLogicalDevice(), m_CommandBuffer, m_pDevice->GetCompletedFenceValue(GetCommandQueueId()));
         }
 
         if (m_State.NumCommands != 0)
@@ -1611,7 +1613,8 @@ void DeviceContextVkImpl::Flush(Uint32               NumCommandLists,
         DEV_CHECK_ERR(pCmdListVk->GetQueueId() == GetDesc().QueueId, "Command list recorded for QueueId ", pCmdListVk->GetQueueId(), ", but executed on QueueId ", GetDesc().QueueId, ".");
         DeferredCtxs.emplace_back();
         vkCmdBuffs.emplace_back();
-        pCmdListVk->Close(DeferredCtxs.back(), vkCmdBuffs.back());
+        DeferredSubmissions.emplace_back();
+        pCmdListVk->Close(DeferredCtxs.back(), vkCmdBuffs.back(), DeferredSubmissions.back());
         VERIFY(vkCmdBuffs.back() != VK_NULL_HANDLE, "Trying to execute empty command buffer");
         VERIFY_EXPR(DeferredCtxs.back() != nullptr);
     }
@@ -1724,11 +1727,18 @@ void DeviceContextVkImpl::Flush(Uint32               NumCommandLists,
     {
         VERIFY_EXPR(vkCmdBuffs[buff_idx] == vkCmdBuff);
         DisposeCurrentCmdBuffer(GetCommandQueueId(), SubmittedFenceValue);
+        // The queries this command buffer ends are ready, and the queries it used may be reset,
+        // once the queue reaches the fence value of this submission.
+        if (CommandBufferSubmissionPtr pSubmission = TakeCmdBufferSubmission())
+            pSubmission->SetFenceValue(SubmittedFenceValue);
         ++buff_idx;
     }
 
     for (Uint32 i = 0; i < NumCommandLists; ++i, ++buff_idx)
     {
+        if (DeferredSubmissions[i])
+            DeferredSubmissions[i]->SetFenceValue(SubmittedFenceValue);
+
         DeviceContextVkImpl* pDeferredCtxVkImpl = DeferredCtxs[i].RawPtr<DeviceContextVkImpl>();
         // Set the bit in the deferred context cmd queue mask corresponding to cmd queue of this context
         pDeferredCtxVkImpl->UpdateSubmittedBuffersCmdQueueMask(GetCommandQueueId());
@@ -2997,7 +3007,7 @@ void DeviceContextVkImpl::FinishCommandList(ICommandList** ppCommandList)
     DEV_CHECK_ERR(err == VK_SUCCESS, "Failed to end command buffer");
     (void)err;
 
-    CommandListVkImpl* pCmdListVk{NEW_RC_OBJ(m_CmdListAllocator, "CommandListVkImpl instance", CommandListVkImpl)(m_pDevice, this, vkCmdBuff)};
+    CommandListVkImpl* pCmdListVk{NEW_RC_OBJ(m_CmdListAllocator, "CommandListVkImpl instance", CommandListVkImpl)(m_pDevice, this, vkCmdBuff, TakeCmdBufferSubmission())};
     pCmdListVk->QueryInterface(IID_CommandList, ppCommandList);
 
     m_CommandBuffer.Reset();
