@@ -483,7 +483,13 @@ if(MSVC)
     # - w4201  - nonstandard extension used: nameless struct/union
     # - w4505  - unreferenced local function has been removed
     # - C26812 - Prefer 'enum class' over 'enum' (Code analysis warning)
-    target_compile_options(Diligent-BuildSettings INTERFACE /W4 /wd4100 /wd4201 /wd4505 /wd26812 /MP ${DILIGENT_MSVC_COMPILE_OPTIONS})
+    # Build with multiple processes (/MP) with cl only: clang-cl ignores /MP with a warning.
+    if (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+        set(MSVC_MULTIPROCESS_OPTION /MP)
+    else()
+        set(MSVC_MULTIPROCESS_OPTION "")
+    endif()
+    target_compile_options(Diligent-BuildSettings INTERFACE /W4 /wd4100 /wd4201 /wd4505 /wd26812 ${MSVC_MULTIPROCESS_OPTION} ${DILIGENT_MSVC_COMPILE_OPTIONS})
 
     if (PLATFORM_WIN32)
         # Enable conformance mode.
@@ -541,10 +547,18 @@ if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
         message("Additional Clang compile options for release configurations: " ${DILIGENT_CLANG_RELEASE_COMPILE_OPTIONS})
     endif()
 
+    if (CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
+        # clang-cl reads -Wall as MSVC's /Wall, which enables every warning (-Weverything).
+        # /W4, which clang-cl takes above, already enables -Wall and -Wextra.
+        set(CLANG_WALL_OPTION "")
+    else()
+        set(CLANG_WALL_OPTION -Wall)
+    endif()
+
     target_compile_options(Diligent-BuildSettings INTERFACE
         ${DILIGENT_CLANG_COMPILE_OPTIONS}
         # Some extra warnings
-        -Wall -Wextra -Wuninitialized -Wconditional-uninitialized -Wextra-tokens -Wpointer-arith -Wloop-analysis -Wunused
+        ${CLANG_WALL_OPTION} -Wextra -Wuninitialized -Wconditional-uninitialized -Wextra-tokens -Wpointer-arith -Wloop-analysis -Wunused
         # Disable few warnings
         -Wno-overloaded-virtual -Wno-incompatible-pointer-types-discards-qualifiers -Wno-unknown-pragmas
         -Wno-zero-as-null-pointer-constant -Wno-unused-parameter -Wno-invalid-offsetof
