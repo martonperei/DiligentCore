@@ -2,7 +2,9 @@ cmake_minimum_required (VERSION 3.10)
 
 project(Diligent-GraphicsEngineD3DBase CXX)
 
-if (PLATFORM_WIN32)
+option(DILIGENT_NO_NVAPI "Do not download or use NVAPI for D3D11/D3D12 extensions" OFF)
+
+if (PLATFORM_WIN32 AND NOT DILIGENT_NO_NVAPI)
     if (DILIGENT_NVAPI_PATH)
         if (NOT EXISTS "${DILIGENT_NVAPI_PATH}/nvapi.h")
             message(WARNING
@@ -100,7 +102,7 @@ if(DILIGENT_INSTALL_CORE)
     install_core_lib(Diligent-GraphicsEngineD3DBase)
 endif()
 
-if(EXISTS "${DILIGENT_NVAPI_PATH}/nvapi.h")
+if(NOT DILIGENT_NO_NVAPI AND EXISTS "${DILIGENT_NVAPI_PATH}/nvapi.h")
     message(STATUS "Using NVApi from ${DILIGENT_NVAPI_PATH}")
     if(${CMAKE_SIZEOF_VOID_P} EQUAL 8)
         set(DILIGENT_NVAPI_LIB_PATH "${DILIGENT_NVAPI_PATH}/amd64/nvapi64.lib" CACHE INTERNAL "NVAPI lib path")
