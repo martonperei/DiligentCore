@@ -104,6 +104,13 @@ public:
         return m_Library.GetVersion();
     }
 
+    virtual const CommitInfo& GetCommitInfo() override final
+    {
+        // Force loading the library
+        m_Library.GetDxcCreateInstance();
+        return m_Library.GetCommitInfo();
+    }
+
     virtual const std::string& GetLibraryName() const override final
     {
         return m_Library.GetLibName();
