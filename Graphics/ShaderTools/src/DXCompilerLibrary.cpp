@@ -59,6 +59,25 @@ void DXCompilerLibrary::InitVersion()
     {
         UNEXPECTED("Failed to create DXC validator instance");
     }
+
+    // The validator's version does not identify the compiler build.
+    // The compiler reports the commit it was built from through IDxcVersionInfo2.
+    CComPtr<IDxcCompiler> pdxcCompiler;
+    if (SUCCEEDED(m_DxcCreateInstance(CLSID_DxcCompiler, IID_PPV_ARGS(&pdxcCompiler))))
+    {
+        CComPtr<IDxcVersionInfo2> pdxcVerInfo2;
+        if (SUCCEEDED(pdxcCompiler->QueryInterface(IID_PPV_ARGS(&pdxcVerInfo2))))
+        {
+            UINT32 CommitCount = 0;
+            char*  CommitHash  = nullptr;
+            if (SUCCEEDED(pdxcVerInfo2->GetCommitInfo(&CommitCount, &CommitHash)) && CommitHash != nullptr)
+            {
+                m_CommitInfo.Count = CommitCount;
+                m_CommitInfo.Hash  = CommitHash;
+                CoTaskMemFree(CommitHash);
+            }
+        }
+    }
 }
 
 #define CHECK_D3D_RESULT(Expr, Message)   \

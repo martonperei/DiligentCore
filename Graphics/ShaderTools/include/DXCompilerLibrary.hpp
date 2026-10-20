@@ -100,6 +100,12 @@ public:
         return m_MaxShaderModel;
     }
 
+    const IDXCompiler::CommitInfo& GetCommitInfo() const
+    {
+        VERIFY(m_Loaded.load(), "DXCompiler library is not loaded");
+        return m_CommitInfo;
+    }
+
     const std::string& GetLibName() const
     {
         return m_LibName;
@@ -115,12 +121,13 @@ private:
     const DXCompilerTarget m_Target;
     const std::string      m_LibName;
 
-    std::mutex            m_LibraryMtx;
-    void*                 m_Library = nullptr;
-    std::atomic<bool>     m_Loaded{false};
-    DxcCreateInstanceProc m_DxcCreateInstance = nullptr;
-    Version               m_Version;
-    ShaderVersion         m_MaxShaderModel;
+    std::mutex              m_LibraryMtx;
+    void*                   m_Library = nullptr;
+    std::atomic<bool>       m_Loaded{false};
+    DxcCreateInstanceProc   m_DxcCreateInstance = nullptr;
+    Version                 m_Version;
+    IDXCompiler::CommitInfo m_CommitInfo;
+    ShaderVersion           m_MaxShaderModel;
 };
 
 } // namespace Diligent
