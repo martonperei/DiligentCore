@@ -65,6 +65,20 @@ struct IDXCompiler
     /// Returns the compiler version.
     virtual Version GetVersion() = 0;
 
+    /// Compiler build information that IDxcVersionInfo2::GetCommitInfo reports.
+    struct CommitInfo
+    {
+        /// The number of commits in the source that the compiler was built from.
+        Uint32 Count = 0;
+
+        /// The hash of the last commit in the source that the compiler was built from.
+        std::string Hash;
+    };
+
+    /// Returns the commit information of the compiler build, which identifies the build
+    /// where the version does not. Both members are empty if the compiler does not report it.
+    virtual const CommitInfo& GetCommitInfo() = 0;
+
     /// Returns the name of the DX Compiler library.
     virtual const std::string& GetLibraryName() const = 0;
 
