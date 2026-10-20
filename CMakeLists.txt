@@ -436,8 +436,16 @@ if(DILIGENT_SANITIZER)
     endif()
 endif()
 
+if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC" OR CMAKE_CXX_SIMULATE_ID STREQUAL "MSVC")
+    # With the MSVC runtime, _DEBUG selects the debug CRT. The runtime library option that
+    # CMake takes from CMAKE_MSVC_RUNTIME_LIBRARY (/MDd, /MTd) defines it when the debug CRT
+    # is used, so it is not defined here: a debug configuration may link the release CRT.
+    set(DEBUG_COMPILE_DEFINITIONS DEBUG)
+else()
+    set(DEBUG_COMPILE_DEFINITIONS _DEBUG DEBUG)
+endif()
 foreach(DBG_CONFIG ${DEBUG_CONFIGURATIONS})
-    target_compile_definitions(Diligent-BuildSettings INTERFACE "$<$<CONFIG:${DBG_CONFIG}>:_DEBUG;DEBUG>")
+    target_compile_definitions(Diligent-BuildSettings INTERFACE "$<$<CONFIG:${DBG_CONFIG}>:${DEBUG_COMPILE_DEFINITIONS}>")
 endforeach()
 
 foreach(REL_CONFIG ${RELEASE_CONFIGURATIONS})
