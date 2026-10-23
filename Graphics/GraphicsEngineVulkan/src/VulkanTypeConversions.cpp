@@ -1217,7 +1217,11 @@ static VkPipelineStageFlags ResourceStateFlagToVkPipelineStage(RESOURCE_STATE St
     switch (StateFlag)
     {
         // clang-format off
-        case RESOURCE_STATE_UNDEFINED:         return VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+        // A barrier from the undefined state waits on every earlier command rather than on none:
+        // NVIDIA's Vulkan driver for an RTX 5080 on Windows let a compute dispatch read a buffer
+        // that an earlier dispatch had not finished writing, past the barrier between them, where
+        // the same barrier took a new buffer from the top of the pipe.
+        case RESOURCE_STATE_UNDEFINED:         return VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
         case RESOURCE_STATE_VERTEX_BUFFER:     return VK_PIPELINE_STAGE_VERTEX_INPUT_BIT;
         case RESOURCE_STATE_CONSTANT_BUFFER:   return VulkanUtilities::VK_PIPELINE_STAGE_ALL_SHADERS;
         case RESOURCE_STATE_INDEX_BUFFER:      return VK_PIPELINE_STAGE_VERTEX_INPUT_BIT;
