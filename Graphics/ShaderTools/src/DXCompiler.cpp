@@ -75,6 +75,7 @@ namespace
 {
 constexpr Uint32 VK_API_VERSION_1_1 = (1u << 22) | (1u << 12);
 constexpr Uint32 VK_API_VERSION_1_2 = (1u << 22) | (2u << 12);
+constexpr Uint32 VK_API_VERSION_1_3 = (1u << 22) | (3u << 12);
 
 
 class DXCompilerImpl final : public IDXCompiler
@@ -996,7 +997,14 @@ void DXCompilerImpl::Compile(const ShaderCreateInfo& ShaderCI,
             DxilArgs.push_back(L"-fspv-debug=vulkan-with-source");
         }
 
-        if (m_APIVersion >= VK_API_VERSION_1_2 && ShaderModel >= ShaderVersion{6, 3})
+        if (m_APIVersion >= VK_API_VERSION_1_3)
+        {
+            // Vulkan 1.3 makes demotion to a helper invocation core, so DXC compiles discard to
+            // OpDemoteToHelperInvocation, which keeps the invocation for derivatives as D3D12 does,
+            // instead of OpKill. The Vulkan device enables shaderDemoteToHelperInvocation.
+            DxilArgs.push_back(L"-fspv-target-env=vulkan1.3");
+        }
+        else if (m_APIVersion >= VK_API_VERSION_1_2 && ShaderModel >= ShaderVersion{6, 3})
         {
             // Ray tracing requires SM 6.3 and Vulkan 1.2
             // Inline ray tracing requires SM 6.5 and Vulkan 1.2
