@@ -381,6 +381,15 @@ PhysicalDevice::PhysicalDevice(const CreateInfo& CI) :
             m_ExtFeatures.ShaderRelaxedExtendedInstruction.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_RELAXED_EXTENDED_INSTRUCTION_FEATURES_KHR;
         }
 
+        // Demotion to a helper invocation was added to the Vulkan 1.3 core.
+        if (m_vkVersion >= VK_API_VERSION_1_3)
+        {
+            *NextFeat = &m_ExtFeatures.ShaderDemoteToHelperInvocation;
+            NextFeat  = &m_ExtFeatures.ShaderDemoteToHelperInvocation.pNext;
+
+            m_ExtFeatures.ShaderDemoteToHelperInvocation.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_DEMOTE_TO_HELPER_INVOCATION_FEATURES;
+        }
+
         const bool HostImageCopySupported = IsExtensionSupported(VK_EXT_HOST_IMAGE_COPY_EXTENSION_NAME);
         if (HostImageCopySupported)
         {

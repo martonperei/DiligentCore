@@ -73,6 +73,7 @@ public:
         VkPhysicalDeviceComputeShaderDerivativesFeaturesKHR         ComputeShaderDerivatives         = {};
         VkPhysicalDevicePipelineExecutablePropertiesFeaturesKHR     PipelineExecutableProperties     = {};
         VkPhysicalDeviceShaderRelaxedExtendedInstructionFeaturesKHR ShaderRelaxedExtendedInstruction = {};
+        VkPhysicalDeviceShaderDemoteToHelperInvocationFeatures      ShaderDemoteToHelperInvocation   = {}; // Vulkan 1.3 core
 
 
         bool Spirv14               = false; // Ray tracing requires Vulkan 1.2 or SPIRV 1.4 extension

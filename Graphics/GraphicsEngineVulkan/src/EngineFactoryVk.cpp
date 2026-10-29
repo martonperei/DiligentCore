@@ -1326,6 +1326,16 @@ void EngineFactoryVkImpl::CreateDeviceAndContextsVk(const EngineVkCreateInfo& En
                 NextExt  = &EnabledExtFeats.ShaderRelaxedExtendedInstruction.pNext;
             }
 
+            // OpDemoteToHelperInvocation, to which DXC compiles discard for a Vulkan 1.3 device (see
+            // DXCompilerImpl::Compile). Vulkan 1.3 requires every device to support it.
+            if (DeviceExtFeatures.ShaderDemoteToHelperInvocation.shaderDemoteToHelperInvocation != VK_FALSE)
+            {
+                EnabledExtFeats.ShaderDemoteToHelperInvocation = DeviceExtFeatures.ShaderDemoteToHelperInvocation;
+
+                *NextExt = &EnabledExtFeats.ShaderDemoteToHelperInvocation;
+                NextExt  = &EnabledExtFeats.ShaderDemoteToHelperInvocation.pNext;
+            }
+
             // Append user-defined features
             *NextExt = EngineCI.pDeviceExtensionFeatures;
         }
