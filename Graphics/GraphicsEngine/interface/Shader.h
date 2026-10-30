@@ -443,7 +443,17 @@ DILIGENT_TYPED_ENUM(SHADER_COMPILE_FLAGS, Uint32)
     /// The flag does not change the optimization level. Other compilers ignore it.
     SHADER_COMPILE_FLAG_DEBUG_INFO = 1u << 5u,
 
-    SHADER_COMPILE_FLAG_LAST = SHADER_COMPILE_FLAG_DEBUG_INFO
+    /// Compile the shader with IEEE strictness, so that the compiler doesn't contract a multiply
+    /// and an add into a fused multiply-add.
+    ///
+    /// A contracted shader's results may differ in their last bits from run to run, since a driver
+    /// may contract the same bytecode differently over time. A shader whose results must repeat
+    /// bit for bit uses this flag.
+    /// DXC takes -Gis for both DXIL and SPIR-V; in SPIR-V, it marks every floating-point result
+    /// NoContraction. FXC takes D3DCOMPILE_IEEE_STRICTNESS. Other compilers ignore the flag.
+    SHADER_COMPILE_FLAG_IEEE_STRICTNESS = 1u << 6u,
+
+    SHADER_COMPILE_FLAG_LAST = SHADER_COMPILE_FLAG_IEEE_STRICTNESS
 };
 DEFINE_FLAG_ENUM_OPERATORS(SHADER_COMPILE_FLAGS);
 

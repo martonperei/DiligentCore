@@ -137,7 +137,7 @@ HRESULT CompileShader(const char*             Source,
     // dwShaderFlags |= D3D10_SHADER_OPTIMIZATION_LEVEL3;
 #endif
 
-    static_assert(SHADER_COMPILE_FLAG_LAST == 1u << 5u, "Did you add a new shader compile flag? You may need to handle it here.");
+    static_assert(SHADER_COMPILE_FLAG_LAST == 1u << 6u, "Did you add a new shader compile flag? You may need to handle it here.");
     if (ShaderCI.CompileFlags & SHADER_COMPILE_FLAG_DEBUG_INFO)
         dwShaderFlags |= D3DCOMPILE_DEBUG;
 
@@ -146,6 +146,9 @@ HRESULT CompileShader(const char*             Source,
 
     if (ShaderCI.CompileFlags & SHADER_COMPILE_FLAG_PACK_MATRIX_ROW_MAJOR)
         dwShaderFlags |= D3DCOMPILE_PACK_MATRIX_ROW_MAJOR;
+
+    if (ShaderCI.CompileFlags & SHADER_COMPILE_FLAG_IEEE_STRICTNESS)
+        dwShaderFlags |= D3DCOMPILE_IEEE_STRICTNESS;
 
     switch (ShaderCI.ShaderOptimizationLevel)
     {
