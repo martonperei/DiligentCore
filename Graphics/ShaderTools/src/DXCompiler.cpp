@@ -1039,6 +1039,12 @@ void DXCompilerImpl::Compile(const ShaderCreateInfo& ShaderCI,
     if ((ShaderCI.CompileFlags & SHADER_COMPILE_FLAG_IEEE_STRICTNESS) != 0)
         DxilArgs.push_back(DXC_ARG_IEEE_STRICTNESS);
 
+    if ((ShaderCI.CompileFlags & SHADER_COMPILE_FLAG_DENORM_FLUSH_TO_ZERO) != 0)
+    {
+        DxilArgs.push_back(L"-denorm");
+        DxilArgs.push_back(L"ftz");
+    }
+
     CComPtr<IDxcBlob> pDXIL;
     CComPtr<IDxcBlob> pDxcLog;
 
