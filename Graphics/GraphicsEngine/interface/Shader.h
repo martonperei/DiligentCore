@@ -465,7 +465,19 @@ DILIGENT_TYPED_ENUM(SHADER_COMPILE_FLAGS, Uint32)
     /// rules flush 32-bit denormalized values always, so FXC ignores the flag, as do other compilers.
     SHADER_COMPILE_FLAG_DENORM_FLUSH_TO_ZERO = 1u << 7u,
 
-    SHADER_COMPILE_FLAG_LAST = SHADER_COMPILE_FLAG_DENORM_FLUSH_TO_ZERO
+    /// Compile the shader so that every 32-bit floating-point operation keeps denormalized inputs
+    /// and results.
+    ///
+    /// A shader whose results must agree between devices uses this flag or
+    /// SHADER_COMPILE_FLAG_DENORM_FLUSH_TO_ZERO, not both, together with
+    /// SHADER_COMPILE_FLAG_IEEE_STRICTNESS.
+    /// DXC takes -denorm preserve, which requires shader model 6.2 or later. In SPIR-V, it declares
+    /// the DenormPreserve execution mode for 32 bits, which needs
+    /// VkPhysicalDeviceFloatControlsProperties::shaderDenormPreserveFloat32. FXC and other compilers
+    /// ignore the flag.
+    SHADER_COMPILE_FLAG_DENORM_PRESERVE = 1u << 8u,
+
+    SHADER_COMPILE_FLAG_LAST = SHADER_COMPILE_FLAG_DENORM_PRESERVE
 };
 DEFINE_FLAG_ENUM_OPERATORS(SHADER_COMPILE_FLAGS);
 

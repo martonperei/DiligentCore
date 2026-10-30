@@ -138,8 +138,9 @@ HRESULT CompileShader(const char*             Source,
 #endif
 
     // FXC compiles to shader model 5, whose rules always flush 32-bit denormalized values, so
-    // SHADER_COMPILE_FLAG_DENORM_FLUSH_TO_ZERO needs no option here.
-    static_assert(SHADER_COMPILE_FLAG_LAST == 1u << 7u, "Did you add a new shader compile flag? You may need to handle it here.");
+    // SHADER_COMPILE_FLAG_DENORM_FLUSH_TO_ZERO needs no option here, and FXC has none for
+    // SHADER_COMPILE_FLAG_DENORM_PRESERVE.
+    static_assert(SHADER_COMPILE_FLAG_LAST == 1u << 8u, "Did you add a new shader compile flag? You may need to handle it here.");
     if (ShaderCI.CompileFlags & SHADER_COMPILE_FLAG_DEBUG_INFO)
         dwShaderFlags |= D3DCOMPILE_DEBUG;
 
