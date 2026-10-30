@@ -30,6 +30,8 @@
 /// \file
 /// Declaration of Diligent::RenderDeviceVkImpl class
 #include <memory>
+#include <mutex>
+#include <string>
 #include <unordered_map>
 #include <vector>
 
@@ -268,6 +270,11 @@ public:
 
     IDXCompiler* GetDxCompiler() const { return m_pDxCompiler.get(); }
 
+    // Writes the shader module's SPIR-V to EngineVkCreateInfo::pShaderModuleDirectory,
+    // unless no directory was given or the directory already holds the module.
+    // Thread-safe, since pipelines may be created on several threads.
+    void WriteShaderModule(const std::vector<uint32_t>& SPIRV);
+
     struct Properties
     {
         Uint32 UploadHeapPageSize  = 0;
@@ -328,6 +335,9 @@ private:
     VulkanDynamicMemoryManager m_DynamicMemoryManager;
 
     std::unique_ptr<IDXCompiler> m_pDxCompiler;
+
+    const std::string m_ShaderModuleDirectory;
+    std::mutex        m_ShaderModuleDirectoryMtx;
 };
 
 } // namespace Diligent

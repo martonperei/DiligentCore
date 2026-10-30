@@ -56,11 +56,12 @@ constexpr INTERFACE_ID PipelineStateVkImpl::IID_InternalImpl;
 namespace
 {
 
-void InitPipelineShaderStages(const VulkanUtilities::LogicalDevice&              LogicalDevice,
+void InitPipelineShaderStages(RenderDeviceVkImpl&                                Device,
                               const PipelineStateVkImpl::TShaderStages&          ShaderStages,
                               std::vector<VulkanUtilities::ShaderModuleWrapper>& ShaderModules,
                               std::vector<VkPipelineShaderStageCreateInfo>&      Stages)
 {
+    const VulkanUtilities::LogicalDevice& LogicalDevice = Device.GetLogicalDevice();
     for (const PipelineStateVkImpl::ShaderStageInfo& Stage : ShaderStages)
     {
         VkPipelineShaderStageCreateInfo StageCI{};
@@ -82,6 +83,7 @@ void InitPipelineShaderStages(const VulkanUtilities::LogicalDevice&             
             ShaderModuleCI.codeSize = SPIRV.size() * sizeof(uint32_t);
             ShaderModuleCI.pCode    = SPIRV.data();
 
+            Device.WriteShaderModule(SPIRV);
             ShaderModules.push_back(LogicalDevice.CreateShaderModule(ShaderModuleCI, pShader->GetDesc().Name));
 
             StageCI.module              = ShaderModules.back();
@@ -1174,14 +1176,12 @@ PipelineStateVkImpl::TShaderStages PipelineStateVkImpl::InitInternalObjects(
 
     MemPool.Reserve();
 
-    const VulkanUtilities::LogicalDevice& LogicalDevice = GetDevice()->GetLogicalDevice();
-
     InitializePipelineDesc(CreateInfo, MemPool);
 
     InitPipelineLayout(CreateInfo, ShaderStages);
 
     // Create shader modules and initialize shader stages
-    InitPipelineShaderStages(LogicalDevice, ShaderStages, ShaderModules, vkShaderStages);
+    InitPipelineShaderStages(*GetDevice(), ShaderStages, ShaderModules, vkShaderStages);
 
     // Build per-stage specialization data and patch vkShaderStages.
     BuildSpecializationData(ShaderStages, CreateInfo.NumSpecializationConstants, CreateInfo.pSpecializationConstants, m_Desc, vkShaderStages, SpecDataPerStage);

@@ -29,6 +29,9 @@
 
 #include "RenderDeviceVkImpl.hpp"
 
+#include <cstdio>
+#include <fstream>
+
 #include "PipelineStateVkImpl.hpp"
 #include "ShaderVkImpl.hpp"
 #include "TextureVkImpl.hpp"
@@ -52,6 +55,7 @@
 #include "VulkanTypeConversions.hpp"
 #include "EngineMemory.h"
 #include "QueryManagerVk.hpp"
+#include "HashUtils.hpp"
 
 namespace Diligent
 {
@@ -147,7 +151,8 @@ RenderDeviceVkImpl::RenderDeviceVkImpl(IReferenceCounters*                      
         EngineCI.DynamicHeapSize,
         ~Uint64{0}
     },
-    m_pDxCompiler{CreateDXCompiler(DXCompilerTarget::Vulkan, m_PhysicalDevice->GetVkVersion(), EngineCI.pDxCompilerPath)}
+    m_pDxCompiler{CreateDXCompiler(DXCompilerTarget::Vulkan, m_PhysicalDevice->GetVkVersion(), EngineCI.pDxCompilerPath)},
+    m_ShaderModuleDirectory{EngineCI.pShaderModuleDirectory != nullptr ? EngineCI.pShaderModuleDirectory : ""}
 // clang-format on
 {
     if (!m_LogicalDevice->GetEnabledExtFeatures().DynamicRendering.dynamicRendering)
@@ -447,6 +452,27 @@ void RenderDeviceVkImpl::IdleGPU()
     IdleAllCommandQueues(true);
     m_LogicalDevice->WaitIdle();
     ReleaseStaleResources();
+}
+
+void RenderDeviceVkImpl::WriteShaderModule(const std::vector<uint32_t>& SPIRV)
+{
+    if (m_ShaderModuleDirectory.empty())
+        return;
+
+    const size_t Size = SPIRV.size() * sizeof(uint32_t);
+    char         Name[32];
+    std::snprintf(Name, sizeof(Name), "%016llx.spv", static_cast<unsigned long long>(ComputeHashRaw(SPIRV.data(), Size)));
+    const std::string Path = m_ShaderModuleDirectory + "/" + Name;
+
+    // The standard streams, since FileSystem.hpp does not compile after the X11 headers that
+    // VulkanHeaders.h includes on Linux.
+    std::lock_guard<std::mutex> Lock{m_ShaderModuleDirectoryMtx};
+    if (std::ifstream{Path, std::ios::binary}.good())
+        return;
+    std::ofstream File{Path, std::ios::binary};
+    File.write(reinterpret_cast<const char*>(SPIRV.data()), static_cast<std::streamsize>(Size));
+    if (!File)
+        LOG_ERROR_MESSAGE("Failed to write shader module '", Path, "'");
 }
 
 void RenderDeviceVkImpl::FlushStaleResources(SoftwareQueueIndex CmdQueueIndex)
