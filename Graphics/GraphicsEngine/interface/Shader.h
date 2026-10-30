@@ -453,7 +453,19 @@ DILIGENT_TYPED_ENUM(SHADER_COMPILE_FLAGS, Uint32)
     /// NoContraction. FXC takes D3DCOMPILE_IEEE_STRICTNESS. Other compilers ignore the flag.
     SHADER_COMPILE_FLAG_IEEE_STRICTNESS = 1u << 6u,
 
-    SHADER_COMPILE_FLAG_LAST = SHADER_COMPILE_FLAG_IEEE_STRICTNESS
+    /// Compile the shader so that every 32-bit floating-point operation flushes denormalized
+    /// inputs and results to zero.
+    ///
+    /// Without the flag, the driver chooses whether to keep or flush denormalized values, and
+    /// devices and backends choose differently. A shader whose results must agree between devices
+    /// uses this flag together with SHADER_COMPILE_FLAG_IEEE_STRICTNESS.
+    /// DXC takes -denorm ftz, which requires shader model 6.2 or later. In SPIR-V, it declares the
+    /// DenormFlushToZero execution mode for 32 bits, which needs
+    /// VkPhysicalDeviceFloatControlsProperties::shaderDenormFlushToZeroFloat32. Shader model 5's
+    /// rules flush 32-bit denormalized values always, so FXC ignores the flag, as do other compilers.
+    SHADER_COMPILE_FLAG_DENORM_FLUSH_TO_ZERO = 1u << 7u,
+
+    SHADER_COMPILE_FLAG_LAST = SHADER_COMPILE_FLAG_DENORM_FLUSH_TO_ZERO
 };
 DEFINE_FLAG_ENUM_OPERATORS(SHADER_COMPILE_FLAGS);
 
