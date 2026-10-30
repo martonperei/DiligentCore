@@ -4245,6 +4245,13 @@ struct EngineVkCreateInfo DILIGENT_DERIVE(EngineCreateInfo)
     /// features when compiling shaders from HLSL.
     const Char* pDxCompilerPath DEFAULT_INITIALIZER(nullptr);
 
+    /// An existing directory where the engine writes the SPIR-V of every shader module it creates,
+    /// exactly as the driver receives it, one file per distinct module, named by a hash of its code.
+    /// A GPU crash dump tool, such as Nsight Aftermath's, finds a faulting shader there by its code
+    /// and maps the shader's instructions to source lines through the debug information it carries.
+    /// The engine writes nothing when this is null, the default.
+    const Char* pShaderModuleDirectory DEFAULT_INITIALIZER(nullptr);
+
 #if DILIGENT_CPP_INTERFACE
     EngineVkCreateInfo() noexcept :
         EngineVkCreateInfo{EngineCreateInfo{}}
