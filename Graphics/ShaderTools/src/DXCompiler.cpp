@@ -1036,6 +1036,9 @@ void DXCompilerImpl::Compile(const ShaderCreateInfo& ShaderCI,
                            DXC_ARG_PACK_MATRIX_ROW_MAJOR :
                            DXC_ARG_PACK_MATRIX_COLUMN_MAJOR);
 
+    if ((ShaderCI.CompileFlags & SHADER_COMPILE_FLAG_IEEE_STRICTNESS) != 0)
+        DxilArgs.push_back(DXC_ARG_IEEE_STRICTNESS);
+
     CComPtr<IDxcBlob> pDXIL;
     CComPtr<IDxcBlob> pDxcLog;
 
