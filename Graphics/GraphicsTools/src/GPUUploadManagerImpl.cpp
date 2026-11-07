@@ -128,6 +128,14 @@ private:
 
 bool ValidateBufferUpdate(const ScheduleBufferUpdateInfo& UpdateInfo)
 {
+    // Reject before scheduling: a worker must not wait for a page that can
+    // never be created, and the cancellation guard must release its callback data.
+    if (UpdateInfo.NumBytes > GPU_UPLOAD_MAX_BUFFER_SIZE)
+    {
+        LOG_ERROR_MESSAGE("ScheduleBufferUpdate() NumBytes must not exceed ", GPU_UPLOAD_MAX_BUFFER_SIZE, " (2 GiB)");
+        return false;
+    }
+
     if (UpdateInfo.NumBytes != 0 &&
         UpdateInfo.pSrcData == nullptr &&
         UpdateInfo.WriteDataCallback == nullptr)
@@ -588,15 +596,18 @@ Uint32 GPUUploadManagerImpl::Page::Allocate(Uint32 NumBytes, Uint32 Alignment)
 {
     // Texture updates may require an alignment that is not a power of two (see ScheduleTextureUpdate()).
     // Align the start only: page selection reserves NumBytes, and the next allocation aligns its own start.
+    // Align and add in 64 bits so a large allocation cannot wrap around and
+    // appear to fit in the page. Narrow only after checking the complete range.
     for (;;)
     {
-        Uint32 Offset        = m_Offset.load(std::memory_order_acquire);
-        Uint32 AlignedOffset = AlignUpNonPw2(Offset, Alignment);
-        if (AlignedOffset > m_Size || NumBytes > m_Size - AlignedOffset)
+        Uint32       Offset        = m_Offset.load(std::memory_order_acquire);
+        const Uint64 AlignedOffset = AlignUpNonPw2(Uint64{Offset}, Uint64{Alignment});
+        const Uint64 EndOffset     = AlignedOffset + NumBytes;
+        if (EndOffset > m_Size)
             return ~0u; // Fail without incrementing offset
 
-        if (m_Offset.compare_exchange_weak(Offset, AlignedOffset + NumBytes, std::memory_order_acq_rel))
-            return AlignedOffset; // Success
+        if (m_Offset.compare_exchange_weak(Offset, static_cast<Uint32>(EndOffset), std::memory_order_acq_rel))
+            return static_cast<Uint32>(AlignedOffset); // Success
     }
 }
 
@@ -1161,6 +1172,10 @@ GPUUploadManagerImpl::GPUUploadManagerImpl(IReferenceCounters* pRefCounters, con
     if (CI.LargePageSize == 0)
         LOG_ERROR_MESSAGE("GPUUploadManagerCreateInfo::LargePageSize must not be zero; using the default value ", LargePageSize);
 
+    // At the maximum size both streams use 2 GiB pages; doubling the normal
+    // page size would overflow or round to an unrepresentable 4 GiB page.
+    const Uint32 MinLargePageSize = PageSize <= GPU_UPLOAD_MAX_BUFFER_SIZE / 2 ? PageSize * 2 : GPU_UPLOAD_MAX_BUFFER_SIZE;
+
     m_Streams.reserve(2);
     m_Streams.push_back(std::make_unique<UploadStream>(
         *this,
@@ -1173,7 +1188,7 @@ GPUUploadManagerImpl::GPUUploadManagerImpl(IReferenceCounters* pRefCounters, con
     m_Streams.push_back(std::make_unique<UploadStream>(
         *this,
         CI.pContext,
-        std::max(LargePageSize, PageSize * 2),
+        std::max(LargePageSize, MinLargePageSize),
         CI.MaxLargePageCount,
         CI.InitialLargePageCount));
     m_pLargeStream = m_Streams.back().get();
@@ -1601,6 +1616,14 @@ bool GPUUploadManagerImpl::ScheduleTextureUpdate(const ScheduleTextureUpdateInfo
             0,
     };
 
+    // Buffer-backed texture uploads share the same page-size limit. Check
+    // before narrowing the 64-bit footprint to the stream's Uint32 update size.
+    if (UpdateData.CopyInfo.MemorySize > GPU_UPLOAD_MAX_BUFFER_SIZE)
+    {
+        LOG_ERROR_MESSAGE("ScheduleTextureUpdate() staging data size must not exceed ", GPU_UPLOAD_MAX_BUFFER_SIZE, " (2 GiB)");
+        return false;
+    }
+
     UploadStream* pStream = m_pTextureStreams ?
         m_pTextureStreams->GetStreamForFormat(UpdateData.UpdateInfo.pContext, Format) :
         &GetStreamForUpdateSize(static_cast<Uint32>(UpdateData.CopyInfo.MemorySize));
@@ -1642,7 +1665,14 @@ GPUUploadManagerImpl::Page* GPUUploadManagerImpl::UploadStream::CreatePage(IDevi
 
     Uint32 PageSize = m_PageSize;
     while (PageSize < RequiredSize)
+    {
+        if (PageSize >= GPU_UPLOAD_MAX_BUFFER_SIZE)
+        {
+            LOG_ERROR_MESSAGE("GPU upload page size overflows Uint32 when growing to ", RequiredSize);
+            return nullptr;
+        }
         PageSize *= 2;
+    }
 
     std::unique_ptr<Page> NewPage = m_Format != TEX_FORMAT_UNKNOWN ?
         std::make_unique<Page>(this, m_Mgr.m_pDevice, PageSize, m_Format, m_Mgr.m_ImmediateContextMask) :
@@ -1960,6 +1990,13 @@ void CreateGPUUploadManager(const GPUUploadManagerCreateInfo& CreateInfo,
     if (ppManager == nullptr)
     {
         DEV_ERROR("ppManager must not be null");
+        return;
+    }
+
+    *ppManager = nullptr;
+    if (CreateInfo.PageSize > GPU_UPLOAD_MAX_BUFFER_SIZE || CreateInfo.LargePageSize > GPU_UPLOAD_MAX_BUFFER_SIZE)
+    {
+        LOG_ERROR_MESSAGE("GPUUploadManagerCreateInfo page sizes must not exceed ", GPU_UPLOAD_MAX_BUFFER_SIZE, " (2 GiB)");
         return;
     }
 

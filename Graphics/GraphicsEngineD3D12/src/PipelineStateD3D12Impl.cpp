@@ -1,5 +1,5 @@
 /*
- *  Copyright 2019-2025 Diligent Graphics LLC
+ *  Copyright 2019-2026 Diligent Graphics LLC
  *  Copyright 2015-2019 Egor Yusov
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
@@ -51,6 +51,7 @@
 #include "DynamicLinearAllocator.hpp"
 #include "D3DShaderResourceValidation.hpp"
 #include "DataBlobImpl.hpp"
+#include "XXH128Hasher.hpp"
 
 #include "DXBCUtils.hpp"
 #include "DXCompiler.hpp"
@@ -63,6 +64,63 @@ constexpr INTERFACE_ID PipelineStateD3D12Impl::IID_InternalImpl;
 
 namespace
 {
+std::wstring GetPSOKey(const RootSignatureD3D12&                    RootSig,
+                       const PipelineStateD3D12Impl::TShaderStages& ShaderStages,
+                       const GraphicsPipelineDesc*                  pGraphics = nullptr)
+{
+    // Hash the effective pipeline after binding remapping. Archive unpacking changes
+    // create-info flags/signatures and shader bindings, but not the native pipeline.
+    XXH128State Hasher;
+    Hasher(RootSig.GetHash(), pGraphics != nullptr);
+
+    if (pGraphics != nullptr)
+    {
+        // Graphics and mesh pipelines have additional fixed-function state. Compute
+        // pipelines are fully described by the root signature and shader bytecode.
+        // Ray tracing uses a separate state-object creation path and is not cached here.
+        Hasher(*pGraphics);
+    }
+
+    for (const auto& Stage : ShaderStages)
+    {
+        Hasher(Stage.Type);
+        for (const auto& Bytecode : Stage.ByteCodes)
+            Hasher.UpdateRaw(Bytecode->GetConstDataPtr(), Bytecode->GetSize());
+    }
+    return L"PSO_2_" + WidenString(Hasher.Digest().ToString());
+}
+
+template <typename LoadPipelineType, typename CreatePipelineType>
+CComPtr<ID3D12DeviceChild> LoadOrCreatePipeline(IPipelineStateCache*                         pPSOCache,
+                                                const RootSignatureD3D12&                    RootSig,
+                                                const PipelineStateD3D12Impl::TShaderStages& ShaderStages,
+                                                const GraphicsPipelineDesc*                  pGraphics,
+                                                const LoadPipelineType&                      LoadPipeline,
+                                                const CreatePipelineType&                    CreatePipeline)
+{
+    PipelineStateCacheD3D12Impl* const pCacheD3D12 = ClassPtrCast<PipelineStateCacheD3D12Impl>(pPSOCache);
+
+    std::wstring               PSOKey;
+    CComPtr<ID3D12DeviceChild> pPSO;
+    if (pCacheD3D12 != nullptr)
+    {
+        PSOKey = GetPSOKey(RootSig, ShaderStages, pGraphics);
+        pPSO   = LoadPipeline(*pCacheD3D12, PSOKey.c_str());
+    }
+
+    if (!pPSO)
+    {
+        // RenderDoc frame capture requires requesting IID_ID3D12PipelineState.
+        const HRESULT hr = CreatePipeline(__uuidof(ID3D12PipelineState), IID_PPV_ARGS_Helper(&pPSO));
+        if (FAILED(hr))
+            LOG_ERROR_AND_THROW("Failed to create pipeline state");
+
+        if (pCacheD3D12 != nullptr)
+            pCacheD3D12->StorePipeline(PSOKey.c_str(), pPSO);
+    }
+    return pPSO;
+}
+
 #ifdef _MSC_VER
 #    pragma warning(push)
 #    pragma warning(disable : 4324) //  warning C4324: structure was padded due to alignment specifier
@@ -726,30 +784,22 @@ void PipelineStateD3D12Impl::InitializePipeline(const GraphicsPipelineStateCreat
         // The only valid bit is D3D12_PIPELINE_STATE_FLAG_TOOL_DEBUG, which can only be set on WARP devices.
         d3d12PSODesc.Flags = D3D12_PIPELINE_STATE_FLAG_NONE;
 
-        // Try to load from the cache
-        PipelineStateCacheD3D12Impl* const pPSOCacheD3D12 = ClassPtrCast<PipelineStateCacheD3D12Impl>(CreateInfo.pPSOCache);
-        const std::wstring                 PSOCacheKey    = pPSOCacheD3D12 != nullptr && !WName.empty() ?
-            PipelineStateCacheD3D12Impl::GetPipelineKey(WName, d3d12PSODesc, m_RootSig->GetSerializedHash()) :
-            std::wstring{};
-        if (!PSOCacheKey.empty())
-            m_pd3d12PSO = pPSOCacheD3D12->LoadGraphicsPipeline(PSOCacheKey, d3d12PSODesc);
-        if (!m_pd3d12PSO)
-        {
-            // Note: renderdoc frame capture fails if any interface but IID_ID3D12PipelineState is requested
-            HRESULT hr = pd3d12Device->CreateGraphicsPipelineState(&d3d12PSODesc, __uuidof(ID3D12PipelineState), IID_PPV_ARGS_Helper(&m_pd3d12PSO));
-            if (FAILED(hr))
-                LOG_ERROR_AND_THROW("Failed to create pipeline state");
-
-            // Add to the cache
-            if (!PSOCacheKey.empty())
-                pPSOCacheD3D12->StorePipeline(PSOCacheKey, m_pd3d12PSO);
-        }
+        m_pd3d12PSO = LoadOrCreatePipeline(
+            CreateInfo.pPSOCache, *m_RootSig, ShaderStages, &GraphicsPipeline,
+            [&](PipelineStateCacheD3D12Impl& Cache, const wchar_t* Name) {
+                return Cache.LoadGraphicsPipeline(Name, d3d12PSODesc);
+            },
+            [&](REFIID IID, void** ppPSO) {
+                return pd3d12Device->CreateGraphicsPipelineState(&d3d12PSODesc, IID, ppPSO);
+            });
     }
 #ifdef D3D12_H_HAS_MESH_SHADER
     else if (m_Desc.PipelineType == PIPELINE_TYPE_MESH)
     {
         const GraphicsPipelineDesc& GraphicsPipeline = m_pGraphicsPipelineData->Desc;
 
+        // Omit the primitive topology subobject: mesh shaders declare their output topology
+        // with [outputtopology], and GraphicsPipeline.PrimitiveTopology is ignored.
         struct MESH_SHADER_PIPELINE_STATE_DESC
         {
             PSS_SubObject<D3D12_PIPELINE_STATE_FLAGS, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_FLAGS>            Flags;
@@ -822,11 +872,14 @@ void PipelineStateD3D12Impl::InitializePipeline(const GraphicsPipelineStateCreat
         streamDesc.SizeInBytes                   = sizeof(d3d12PSODesc);
         streamDesc.pPipelineStateSubobjectStream = &d3d12PSODesc;
 
-        ID3D12Device2* pd3d12Device2 = m_pDevice->GetD3D12Device2();
-        // Note: renderdoc frame capture fails if any interface but IID_ID3D12PipelineState is requested
-        HRESULT hr = pd3d12Device2->CreatePipelineState(&streamDesc, __uuidof(ID3D12PipelineState), IID_PPV_ARGS_Helper(&m_pd3d12PSO));
-        if (FAILED(hr))
-            LOG_ERROR_AND_THROW("Failed to create pipeline state");
+        m_pd3d12PSO = LoadOrCreatePipeline(
+            CreateInfo.pPSOCache, *m_RootSig, ShaderStages, &GraphicsPipeline,
+            [&](PipelineStateCacheD3D12Impl& Cache, const wchar_t* Name) {
+                return Cache.LoadPipeline(Name, streamDesc);
+            },
+            [&](REFIID IID, void** ppPSO) {
+                return m_pDevice->GetD3D12Device2()->CreatePipelineState(&streamDesc, IID, ppPSO);
+            });
     }
 #endif // D3D12_H_HAS_MESH_SHADER
     else
@@ -869,24 +922,16 @@ void PipelineStateD3D12Impl::InitializePipeline(const ComputePipelineStateCreate
     d3d12PSODesc.pRootSignature = m_RootSig->GetD3D12RootSignature();
 
     // Try to load from the cache
-    const std::wstring                 WName          = WidenString(m_Desc.Name);
-    PipelineStateCacheD3D12Impl* const pPSOCacheD3D12 = ClassPtrCast<PipelineStateCacheD3D12Impl>(CreateInfo.pPSOCache);
-    const std::wstring                 PSOCacheKey    = pPSOCacheD3D12 != nullptr && !WName.empty() ?
-        PipelineStateCacheD3D12Impl::GetPipelineKey(WName, d3d12PSODesc, m_RootSig->GetSerializedHash()) :
-        std::wstring{};
-    if (!PSOCacheKey.empty())
-        m_pd3d12PSO = pPSOCacheD3D12->LoadComputePipeline(PSOCacheKey, d3d12PSODesc);
-    if (!m_pd3d12PSO)
-    {
-        // Note: renderdoc frame capture fails if any interface but IID_ID3D12PipelineState is requested
-        HRESULT hr = pd3d12Device->CreateComputePipelineState(&d3d12PSODesc, __uuidof(ID3D12PipelineState), IID_PPV_ARGS_Helper(&m_pd3d12PSO));
-        if (FAILED(hr))
-            LOG_ERROR_AND_THROW("Failed to create pipeline state");
+    const std::wstring WName = WidenString(m_Desc.Name);
 
-        // Add to the cache
-        if (!PSOCacheKey.empty())
-            pPSOCacheD3D12->StorePipeline(PSOCacheKey, m_pd3d12PSO);
-    }
+    m_pd3d12PSO = LoadOrCreatePipeline(
+        CreateInfo.pPSOCache, *m_RootSig, ShaderStages, nullptr,
+        [&](PipelineStateCacheD3D12Impl& Cache, const wchar_t* Name) {
+            return Cache.LoadComputePipeline(Name, d3d12PSODesc);
+        },
+        [&](REFIID IID, void** ppPSO) {
+            return pd3d12Device->CreateComputePipelineState(&d3d12PSODesc, IID, ppPSO);
+        });
 
     if (!WName.empty())
     {

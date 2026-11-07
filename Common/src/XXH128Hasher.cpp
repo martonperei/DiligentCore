@@ -30,7 +30,6 @@
 
 #include "DebugUtilities.hpp"
 #include "Cast.hpp"
-#include "ShaderToolsCommon.hpp"
 
 namespace Diligent
 {
@@ -63,10 +62,23 @@ XXH128State::~XXH128State()
     XXH3_freeState(m_State);
 }
 
+XXH128State& XXH128State::operator=(XXH128State&& RHS) noexcept
+{
+    if (this != &RHS)
+    {
+        XXH3_freeState(m_State);
+        m_State     = RHS.m_State;
+        RHS.m_State = nullptr;
+    }
+    return *this;
+}
+
 XXH128State& XXH128State::UpdateRaw(const void* pData, uint64_t Size) noexcept
 {
+    if (Size == 0)
+        return *this;
+
     VERIFY_EXPR(pData != nullptr);
-    VERIFY_EXPR(Size != 0);
     XXH3_128bits_update(m_State, pData, StaticCast<size_t>(Size));
     return *this;
 }
@@ -75,57 +87,6 @@ XXH128Hash XXH128State::Digest() noexcept
 {
     XXH128_hash_t Hash = XXH3_128bits_digest(m_State);
     return {Hash.low64, Hash.high64};
-}
-
-XXH128State& XXH128State::Update(const ShaderCreateInfo& ShaderCI) noexcept
-{
-    ASSERT_SIZEOF64(ShaderCI, 152, "Did you add new members to ShaderCreateInfo? Please handle them here.");
-
-    Update(static_cast<Uint32>(ShaderCI.SourceLength), // Aka ByteCodeSize
-           ShaderCI.EntryPoint,
-           ShaderCI.Desc,
-           ShaderCI.SourceLanguage,
-           ShaderCI.ShaderCompiler,
-           ShaderCI.HLSLVersion,
-           ShaderCI.GLSLVersion,
-           ShaderCI.GLESSLVersion,
-           ShaderCI.MSLVersion,
-           ShaderCI.CompileFlags,
-           ShaderCI.ShaderOptimizationLevel,
-           ShaderCI.LoadConstantBufferReflection);
-
-    if (ShaderCI.Source != nullptr || ShaderCI.FilePath != nullptr)
-    {
-        DEV_CHECK_ERR(ShaderCI.ByteCode == nullptr, "ShaderCI.ByteCode must be null when either Source or FilePath is specified");
-        ProcessShaderIncludes(ShaderCI, [this](const ShaderIncludePreprocessInfo& ProcessInfo) {
-            UpdateStr(ProcessInfo.Source, ProcessInfo.SourceLength);
-        });
-    }
-    else if (ShaderCI.ByteCode != nullptr && ShaderCI.ByteCodeSize != 0)
-    {
-        UpdateRaw(ShaderCI.ByteCode, ShaderCI.ByteCodeSize);
-    }
-
-    if (ShaderCI.Macros)
-    {
-        for (size_t i = 0; i < ShaderCI.Macros.Count; ++i)
-        {
-            const ShaderMacro& Macro = ShaderCI.Macros[i];
-            Update(Macro.Name, Macro.Definition);
-        }
-    }
-
-    if (ShaderCI.GLSLExtensions != nullptr)
-    {
-        UpdateStr(ShaderCI.GLSLExtensions);
-    }
-
-    if (ShaderCI.WebGPUEmulatedArrayIndexSuffix != nullptr)
-    {
-        UpdateStr(ShaderCI.WebGPUEmulatedArrayIndexSuffix);
-    }
-
-    return *this;
 }
 
 } // namespace Diligent

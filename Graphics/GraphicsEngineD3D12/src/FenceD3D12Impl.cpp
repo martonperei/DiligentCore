@@ -29,6 +29,8 @@
 
 #include "FenceD3D12Impl.hpp"
 
+#include <thread>
+
 #include "WinHPreface.h"
 #include <atlbase.h>
 #include "WinHPostface.h"
@@ -79,9 +81,16 @@ void FenceD3D12Impl::Wait(Uint64 Value)
     if (GetCompletedValue() >= Value)
         return;
 
-    // With a null event handle, SetEventOnCompletion() does not return until the fence reaches the value.
-    // Unlike a shared event, this needs no reset between waits and is safe when several threads wait at once.
-    CHECK_D3D_RESULT(m_pd3d12Fence->SetEventOnCompletion(Value, nullptr), "Failed to wait for the fence");
+    // A null event blocks this caller until Value completes and supports concurrent waits.
+    // Reusing a manual-reset event would allow later waits to return prematurely.
+    const HRESULT hr = m_pd3d12Fence->SetEventOnCompletion(Value, nullptr);
+    if (FAILED(hr))
+    {
+        // Wait() must not return before the fence reaches the value, so fall back to polling.
+        LOG_D3D_ERROR(hr, FormatString("Failed to wait for fence '", m_Desc.Name, "' to reach value ", Value, ". Falling back to polling."));
+        while (GetCompletedValue() < Value)
+            std::this_thread::sleep_for(std::chrono::microseconds{1});
+    }
 }
 
 } // namespace Diligent

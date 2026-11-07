@@ -196,7 +196,6 @@ PRIVATE
     Diligent-ShaderTools
     dxgi.lib
     d3dcompiler.lib
-    xxHash::xxhash
 PUBLIC
     Diligent-GraphicsEngineD3D12Interface
 )

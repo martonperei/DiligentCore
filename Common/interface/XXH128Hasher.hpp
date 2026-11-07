@@ -29,10 +29,9 @@
 #include <cstring>
 #include <string>
 
-#include "../../../Primitives/interface/BasicTypes.h"
-#include "../../../Graphics/GraphicsEngine/interface/Shader.h"
-#include "../../../Common/interface/StringTools.hpp"
-#include "../../../Common/interface/HashUtils.hpp"
+#include "../../Primitives/interface/BasicTypes.h"
+#include "StringTools.hpp"
+#include "HashUtils.hpp"
 
 struct XXH3_state_s;
 
@@ -67,13 +66,7 @@ struct XXH128State final
         RHS.m_State = nullptr;
     }
 
-    XXH128State& operator=(XXH128State&& RHS) noexcept
-    {
-        this->m_State = RHS.m_State;
-        RHS.m_State   = nullptr;
-
-        return *this;
-    }
+    XXH128State& operator=(XXH128State&& RHS) noexcept;
 
     template <typename T>
     typename std::enable_if<std::is_fundamental<T>::value || std::is_enum<T>::value, XXH128State&>::type Update(const T& Val) noexcept
@@ -103,8 +96,13 @@ struct XXH128State final
         return Update(RestArgs...);
     }
 
+    /// Appends Size bytes. A zero-size update is a no-op and permits a null pData.
     XXH128State& UpdateRaw(const void* pData, uint64_t Size) noexcept;
 
+    /// Appends a Uint64 byte length followed by the string contents.
+    /// A null pointer is encoded as ~Uint64{0} with no contents and differs from an empty string.
+    /// Len is a character count; zero uses the null-terminated string length.
+    /// Use UpdateRaw() to append raw string fragments without field boundaries.
     template <typename T>
     typename std::enable_if<(std::is_same<typename std::remove_cv<T>::type, char>::value ||
                              std::is_same<typename std::remove_cv<T>::type, wchar_t>::value),
@@ -112,12 +110,12 @@ struct XXH128State final
     UpdateStr(T* pStr, size_t Len = 0) noexcept
     {
         if (pStr == nullptr)
-            return *this;
+            return Update(~Uint64{0});
         if (Len == 0)
             Len = StrLen(pStr);
-        if (Len == 0)
-            return *this;
-        return UpdateRaw(pStr, Len);
+        const Uint64 ByteLength = static_cast<Uint64>(Len) * sizeof(T);
+        Update(ByteLength);
+        return UpdateRaw(pStr, ByteLength);
     }
 
     template <typename... ArgsType>
@@ -125,8 +123,6 @@ struct XXH128State final
     {
         return Update(Args...);
     }
-
-    XXH128State& Update(const ShaderCreateInfo& ShaderCI) noexcept;
 
     template <typename T>
     typename std::enable_if<(std::is_same<typename std::remove_cv<T>::type, SamplerDesc>::value ||
@@ -168,7 +164,6 @@ struct XXH128State final
         Combiner(Val);
         return *this;
     }
-
 
     XXH128Hash Digest() noexcept;
 

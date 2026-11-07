@@ -491,4 +491,98 @@ TEST(ClearRenderTargetTest, LoadOpClear2)
     TestClearWithLoadOp({0.375f, 0.75, 0.125, 1.0f}, 2);
 }
 
+// TEX_FORMAT_RGB10A2_UNORM has the layout of DXGI_FORMAT_R10G10B10A2_UNORM and GL_RGB10_A2: red in the low 10 bits
+// and alpha in the high 2 bits. Check the exact red layout and all components of a mixed-color clear.
+TEST(ClearRenderTargetTest, RGB10A2BitLayout)
+{
+    GPUTestingEnvironment* pEnv     = GPUTestingEnvironment::GetInstance();
+    IRenderDevice*         pDevice  = pEnv->GetDevice();
+    IDeviceContext*        pContext = pEnv->GetDeviceContext();
+
+    if ((pDevice->GetTextureFormatInfoExt(TEX_FORMAT_RGB10A2_UNORM).BindFlags & BIND_RENDER_TARGET) == 0)
+    {
+        GTEST_SKIP() << "RGB10A2 render targets are not supported by this device";
+    }
+
+    GPUTestingEnvironment::ScopedReset EnvironmentAutoReset;
+
+    TextureDesc TexDesc;
+    TexDesc.Name      = "ClearRenderTargetTest.RGB10A2BitLayout";
+    TexDesc.Type      = RESOURCE_DIM_TEX_2D;
+    TexDesc.Width     = 4;
+    TexDesc.Height    = 4;
+    TexDesc.Format    = TEX_FORMAT_RGB10A2_UNORM;
+    TexDesc.BindFlags = BIND_RENDER_TARGET;
+    RefCntAutoPtr<ITexture> pTex;
+    pDevice->CreateTexture(TexDesc, nullptr, &pTex);
+    ASSERT_NE(pTex, nullptr);
+
+    TexDesc.Name           = "ClearRenderTargetTest.RGB10A2BitLayout staging";
+    TexDesc.Usage          = USAGE_STAGING;
+    TexDesc.BindFlags      = BIND_NONE;
+    TexDesc.CPUAccessFlags = CPU_ACCESS_READ;
+    RefCntAutoPtr<ITexture> pStagingTex;
+    pDevice->CreateTexture(TexDesc, nullptr, &pStagingTex);
+    ASSERT_NE(pStagingTex, nullptr);
+
+    // Some Intel D3D11 drivers return null with DO_NOT_WAIT even after WaitForIdle().
+    const MAP_FLAGS MapFlags = pDevice->GetDeviceInfo().Type == RENDER_DEVICE_TYPE_D3D11 ? MAP_FLAG_NONE : MAP_FLAG_DO_NOT_WAIT;
+
+    constexpr float ClearColors[][4] =
+        {
+            {1, 0, 0, 1},
+            {0.125f, 0.25f, 1.0f, 0.5f},
+        };
+    ITextureView* pRTVs[] = {pTex->GetDefaultView(TEXTURE_VIEW_RENDER_TARGET)};
+    for (Uint32 ClearIndex = 0; ClearIndex < _countof(ClearColors); ++ClearIndex)
+    {
+        SCOPED_TRACE(ClearIndex == 0 ? "Red" : "Mixed");
+
+        pContext->SetRenderTargets(1, pRTVs, nullptr, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+        pContext->ClearRenderTarget(pRTVs[0], ClearColors[ClearIndex], RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+        pContext->SetRenderTargets(0, nullptr, nullptr, RESOURCE_STATE_TRANSITION_MODE_NONE);
+
+        pContext->CopyTexture(CopyTextureAttribs{pTex, RESOURCE_STATE_TRANSITION_MODE_TRANSITION, pStagingTex, RESOURCE_STATE_TRANSITION_MODE_TRANSITION});
+        pContext->WaitForIdle();
+
+        MappedTextureSubresource MappedData;
+        pContext->MapTextureSubresource(pStagingTex, 0, 0, MAP_READ, MapFlags, nullptr, MappedData);
+        ASSERT_NE(MappedData.pData, nullptr);
+
+        for (Uint32 Row = 0; Row < TexDesc.Height; ++Row)
+        {
+            const Uint8* pRow = static_cast<const Uint8*>(MappedData.pData) + Row * MappedData.Stride;
+            for (Uint32 Col = 0; Col < TexDesc.Width; ++Col)
+            {
+                SCOPED_TRACE(testing::Message() << "Texel (" << Col << ", " << Row << ")");
+                Uint32 Texel = 0;
+                memcpy(&Texel, pRow + Col * sizeof(Texel), sizeof(Texel));
+                if (ClearIndex == 0)
+                {
+                    constexpr Uint32 RedTexel = (3u << 30) | 0x3FFu;
+                    EXPECT_EQ(Texel, RedTexel) << "Expected red in bits 0-9 and alpha in bits 30-31";
+                }
+                else
+                {
+                    const Uint32 R = Texel & 0x3FFu;
+                    const Uint32 G = (Texel >> 10) & 0x3FFu;
+                    const Uint32 B = (Texel >> 20) & 0x3FFu;
+                    const Uint32 A = (Texel >> 30) & 0x3u;
+
+                    // Vulkan permits either adjacent integer for non-integral UNORM conversions:
+                    // R = 127.875, G = 255.75, B = 1023, A = 1.5.
+                    EXPECT_GE(R, 127u);
+                    EXPECT_LE(R, 128u);
+                    EXPECT_GE(G, 255u);
+                    EXPECT_LE(G, 256u);
+                    EXPECT_EQ(B, 1023u);
+                    EXPECT_GE(A, 1u);
+                    EXPECT_LE(A, 2u);
+                }
+            }
+        }
+        pContext->UnmapTextureSubresource(pStagingTex, 0, 0);
+    }
+}
+
 } // namespace

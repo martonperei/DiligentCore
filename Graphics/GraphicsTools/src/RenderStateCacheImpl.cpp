@@ -49,6 +49,7 @@
 #include "GraphicsAccessories.hpp"
 #include "GraphicsUtilities.h"
 #include "ShaderSourceFactoryUtils.hpp"
+#include "ShaderToolsCommon.hpp"
 #include "DXCompiler.hpp"
 
 namespace Diligent
@@ -149,7 +150,7 @@ std::string RenderStateCacheImpl::MakeHashStr(const char* Name, const XXH128Hash
 }
 
 
-static void ComputeDeviceAttribsHash(XXH128State& Hasher, IRenderDevice* pDevice)
+static void UpdateHashWithDeviceAttribs(XXH128State& Hasher, IRenderDevice* pDevice)
 {
     if (pDevice != nullptr)
     {
@@ -330,7 +331,7 @@ static void HashShaderCIByFileName(XXH128State& Hasher, const ShaderCreateInfo& 
     ShaderCreateInfo HashCI = ShaderCI;
     HashCI.FilePath         = nullptr;
     HashCI.Source           = nullptr;
-    Hasher.Update(HashCI);
+    UpdateHashWithShaderCreateInfo(Hasher, HashCI);
     if (ShaderCI.FilePath != nullptr)
     {
         // Hash only the file path
@@ -354,10 +355,10 @@ bool RenderStateCacheImpl::CreateShaderInternal(const ShaderCreateInfo& ShaderCI
 #else
     constexpr bool IsDebug = false;
 #endif
-    ComputeDeviceAttribsHash(Hasher, m_pDevice);
+    UpdateHashWithDeviceAttribs(Hasher, m_pDevice);
     if (m_CI.FileHashMode == RENDER_STATE_CACHE_FILE_HASH_MODE_BY_CONTENT)
     {
-        Hasher.Update(ShaderCI);
+        UpdateHashWithShaderCreateInfo(Hasher, ShaderCI);
     }
     else if (m_CI.FileHashMode == RENDER_STATE_CACHE_FILE_HASH_MODE_BY_NAME)
     {
@@ -618,6 +619,7 @@ protected:
                 ShaderCI.Source                         = static_cast<const char*>(ShaderCI.ByteCode);
                 ShaderCI.ByteCode                       = nullptr;
                 ShaderCI.SourceLanguage                 = SHADER_SOURCE_LANGUAGE_WGSL;
+                ShaderCI.EntryPoint                     = GetWebGPUShaderEntryPoint(pShader);
                 ShaderCI.WebGPUEmulatedArrayIndexSuffix = GetWebGPUEmulatedArrayIndexSuffix(pShader);
             }
             ShaderArchiveInfo ArchiveInfo;
@@ -819,8 +821,22 @@ bool RenderStateCacheImpl::CreatePipelineStateInternal(const CreateInfoType& PSO
     }
 
     XXH128State Hasher;
-    ComputeDeviceAttribsHash(Hasher, m_pDevice);
+    UpdateHashWithDeviceAttribs(Hasher, m_pDevice);
     Hasher.Update(PSOCreateInfo);
+    if (m_DeviceType == RENDER_DEVICE_TYPE_WEBGPU)
+    {
+        // WGSL bytecode contains the whole module, so the selected entry point
+        // is also needed to identify the shader used by the pipeline.
+        ProcessPipelineStateCreateInfoShaders(PSOCreateInfo, [&Hasher](IShader* pShader) {
+            Hasher.Update(pShader != nullptr);
+            if (pShader != nullptr)
+            {
+                const char* EntryPoint = GetWebGPUShaderEntryPoint(pShader);
+                VERIFY_EXPR(EntryPoint != nullptr);
+                Hasher.Update(EntryPoint);
+            }
+        });
+    }
     const auto Hash = Hasher.Digest();
 
     // First, try to check if the PSO has already been requested
