@@ -436,7 +436,15 @@ void EngineFactoryD3D12Impl::CreateDeviceAndContextsD3D12(const EngineD3D12Creat
                         // D3D12 WARNING: ID3D12CommandList::ClearDepthStencilView: The clear values do not match those passed to resource creation.
                         // The clear operation is typically slower as a result; but will still clear to the desired value.
                         // [ EXECUTION WARNING #821: CLEARDEPTHSTENCILVIEW_MISMATCHINGCLEARVALUE]
-                        D3D12_MESSAGE_ID_CLEARDEPTHSTENCILVIEW_MISMATCHINGCLEARVALUE //
+                        D3D12_MESSAGE_ID_CLEARDEPTHSTENCILVIEW_MISMATCHINGCLEARVALUE,
+
+                        // D3D12 WARNING: ID3D12PipelineLibrary::Load*Pipeline: This library does not have a pipeline stored with name "...".
+                        // PipelineStateCacheD3D12Impl looks up every pipeline before it creates one, so a miss is expected.
+                        D3D12_MESSAGE_ID_LOADPIPELINE_NAMENOTFOUND,
+
+                        // D3D12 WARNING: ID3D12PipelineLibrary::StorePipeline: A pipeline with name "..." already exists in the library.
+                        // Two threads that create the same pipeline both miss the cache and both store it; the second store is redundant.
+                        D3D12_MESSAGE_ID_STOREPIPELINE_DUPLICATENAME //
                     };
 
                 D3D12_INFO_QUEUE_FILTER NewFilter = {};
