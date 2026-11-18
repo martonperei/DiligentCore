@@ -60,17 +60,16 @@ D3D12DynamicPage::D3D12DynamicPage(ID3D12Device* pd3d12Device, Uint64 Size)
     HRESULT hr = pd3d12Device->CreateCommittedResource(&HeapProps, D3D12_HEAP_FLAG_NONE, &ResourceDesc,
                                                        DefaultUsage, nullptr, __uuidof(m_pd3d12Buffer),
                                                        reinterpret_cast<void**>(static_cast<ID3D12Resource**>(&m_pd3d12Buffer)));
-    if (FAILED(hr))
-    {
-        LOG_D3D_ERROR(hr, "Failed to create dynamic page");
-        return;
-    }
+    // The callers of D3D12DynamicHeap::Allocate write through the CPU address of each allocation
+    // without a check. A page that is not created, or not mapped, as after a device removal, would
+    // give them a null address. So such a page throws.
+    CHECK_D3D_RESULT_THROW(hr, "Failed to create dynamic page");
 
     m_pd3d12Buffer->SetName(L"Dynamic memory page");
 
     m_GPUVirtualAddress = m_pd3d12Buffer->GetGPUVirtualAddress();
 
-    m_pd3d12Buffer->Map(0, nullptr, &m_CPUVirtualAddress);
+    CHECK_D3D_RESULT_THROW(m_pd3d12Buffer->Map(0, nullptr, &m_CPUVirtualAddress), "Failed to map dynamic page");
 
     LOG_INFO_MESSAGE("Created dynamic memory page. Size: ", FormatMemorySize(Size, 2), "; GPU virtual address 0x", std::hex, m_GPUVirtualAddress);
 }
