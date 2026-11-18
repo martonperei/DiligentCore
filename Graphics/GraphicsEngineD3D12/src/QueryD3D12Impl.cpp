@@ -151,7 +151,8 @@ bool QueryD3D12Impl::GetData(void* pData, Uint32 DataSize, bool AutoInvalidate)
             case QUERY_TYPE_OCCLUSION:
             {
                 UINT64 NumSamples;
-                m_pQueryMgr->ReadQueryData(m_Desc.Type, m_QueryHeapIndex[0], &NumSamples, sizeof(NumSamples));
+                if (!m_pQueryMgr->ReadQueryData(m_Desc.Type, m_QueryHeapIndex[0], &NumSamples, sizeof(NumSamples)))
+                    return false;
                 if (pData != nullptr)
                 {
                     QueryDataOcclusion& QueryData{*reinterpret_cast<QueryDataOcclusion*>(pData)};
@@ -163,7 +164,8 @@ bool QueryD3D12Impl::GetData(void* pData, Uint32 DataSize, bool AutoInvalidate)
             case QUERY_TYPE_BINARY_OCCLUSION:
             {
                 UINT64 AnySamplePassed;
-                m_pQueryMgr->ReadQueryData(m_Desc.Type, m_QueryHeapIndex[0], &AnySamplePassed, sizeof(AnySamplePassed));
+                if (!m_pQueryMgr->ReadQueryData(m_Desc.Type, m_QueryHeapIndex[0], &AnySamplePassed, sizeof(AnySamplePassed)))
+                    return false;
                 if (pData != nullptr)
                 {
                     QueryDataBinaryOcclusion& QueryData = *reinterpret_cast<QueryDataBinaryOcclusion*>(pData);
@@ -177,7 +179,8 @@ bool QueryD3D12Impl::GetData(void* pData, Uint32 DataSize, bool AutoInvalidate)
             case QUERY_TYPE_TIMESTAMP:
             {
                 UINT64 Counter;
-                m_pQueryMgr->ReadQueryData(m_Desc.Type, m_QueryHeapIndex[0], &Counter, sizeof(Counter));
+                if (!m_pQueryMgr->ReadQueryData(m_Desc.Type, m_QueryHeapIndex[0], &Counter, sizeof(Counter)))
+                    return false;
                 if (pData != nullptr)
                 {
                     QueryDataTimestamp& QueryData{*reinterpret_cast<QueryDataTimestamp*>(pData)};
@@ -190,7 +193,8 @@ bool QueryD3D12Impl::GetData(void* pData, Uint32 DataSize, bool AutoInvalidate)
             case QUERY_TYPE_PIPELINE_STATISTICS:
             {
                 D3D12_QUERY_DATA_PIPELINE_STATISTICS d3d12QueryData;
-                m_pQueryMgr->ReadQueryData(m_Desc.Type, m_QueryHeapIndex[0], &d3d12QueryData, sizeof(d3d12QueryData));
+                if (!m_pQueryMgr->ReadQueryData(m_Desc.Type, m_QueryHeapIndex[0], &d3d12QueryData, sizeof(d3d12QueryData)))
+                    return false;
                 if (pData != nullptr)
                 {
                     QueryDataPipelineStatistics& QueryData{*reinterpret_cast<QueryDataPipelineStatistics*>(pData)};
@@ -212,8 +216,9 @@ bool QueryD3D12Impl::GetData(void* pData, Uint32 DataSize, bool AutoInvalidate)
             case QUERY_TYPE_DURATION:
             {
                 UINT64 StartCounter, EndCounter;
-                m_pQueryMgr->ReadQueryData(m_Desc.Type, m_QueryHeapIndex[0], &StartCounter, sizeof(StartCounter));
-                m_pQueryMgr->ReadQueryData(m_Desc.Type, m_QueryHeapIndex[1], &EndCounter, sizeof(EndCounter));
+                if (!m_pQueryMgr->ReadQueryData(m_Desc.Type, m_QueryHeapIndex[0], &StartCounter, sizeof(StartCounter)) ||
+                    !m_pQueryMgr->ReadQueryData(m_Desc.Type, m_QueryHeapIndex[1], &EndCounter, sizeof(EndCounter)))
+                    return false;
                 if (pData != nullptr)
                 {
                     QueryDataDuration& QueryData{*reinterpret_cast<QueryDataDuration*>(pData)};

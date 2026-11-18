@@ -263,7 +263,7 @@ void QueryManagerD3D12::EndQuery(CommandContext& Ctx, QUERY_TYPE Type, Uint32 In
     Ctx.ResolveQueryData(HeapInfo.GetD3D12QueryHeap(), d3d12QueryType, Index, 1, m_pd3d12ResolveBuffer, HeapInfo.GetResolveBufferOffset(Index));
 }
 
-void QueryManagerD3D12::ReadQueryData(QUERY_TYPE Type, Uint32 Index, void* pDataPtr, Uint32 DataSize) const
+bool QueryManagerD3D12::ReadQueryData(QUERY_TYPE Type, Uint32 Index, void* pDataPtr, Uint32 DataSize) const
 {
     const QueryHeapInfo& HeapInfo = m_Heaps[Type];
     VERIFY_EXPR(HeapInfo.GetType() == Type);
@@ -276,9 +276,15 @@ void QueryManagerD3D12::ReadQueryData(QUERY_TYPE Type, Uint32 Index, void* pData
 
     void* pBufferData = nullptr;
     // The pointer returned by Map is never offset by any values in pReadRange.
-    m_pd3d12ResolveBuffer->Map(0, &ReadRange, &pBufferData);
+    const HRESULT hr = m_pd3d12ResolveBuffer->Map(0, &ReadRange, &pBufferData);
+    if (FAILED(hr) || pBufferData == nullptr)
+    {
+        LOG_ERROR_MESSAGE_ONCE("Failed to map the query resolve buffer to read query data. HRESULT: 0x", std::hex, static_cast<Uint32>(hr));
+        return false;
+    }
     memcpy(pDataPtr, reinterpret_cast<const Uint8*>(pBufferData) + Offset, QueryDataSize);
     m_pd3d12ResolveBuffer->Unmap(0, nullptr);
+    return true;
 }
 
 } // namespace Diligent

@@ -69,7 +69,9 @@ public:
 
     void BeginQuery(CommandContext& Ctx, QUERY_TYPE Type, Uint32 Index) const;
     void EndQuery(CommandContext& Ctx, QUERY_TYPE Type, Uint32 Index) const;
-    void ReadQueryData(QUERY_TYPE Type, Uint32 Index, void* pDataPtr, Uint32 DataSize) const;
+    // Returns false, and writes nothing to pDataPtr, when the resolve buffer cannot be mapped,
+    // as after a device removal.
+    bool ReadQueryData(QUERY_TYPE Type, Uint32 Index, void* pDataPtr, Uint32 DataSize) const;
 
     SoftwareQueueIndex GetCommandQueueId() const
     {
