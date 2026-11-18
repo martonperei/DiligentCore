@@ -243,6 +243,12 @@ struct SerializationDeviceCreateInfo
     /// Metal attributes, see Diligent::SerializationDeviceMtlInfo.
     SerializationDeviceMtlInfo Metal;
 
+    /// Archive targets to support, see Diligent::ARCHIVE_DEVICE_DATA_FLAGS.
+
+    /// The device supports only the targets that are in this mask and that the build supports.
+    /// It does not create a shader compiler for any other target.
+    ARCHIVE_DEVICE_DATA_FLAGS ArchiveTargets DEFAULT_INITIALIZER(ARCHIVE_DEVICE_DATA_FLAG_ALL);
+
     /// An optional thread pool for asynchronous shader and pipeline state compilation.
     IThreadPool* pAsyncShaderCompilationThreadPool DEFAULT_INITIALIZER(nullptr);
 

@@ -187,6 +187,7 @@ RenderStateCacheImpl::RenderStateCacheImpl(IReferenceCounters*               pRe
     SerializationDeviceCI.DeviceInfo                        = m_pDevice->GetDeviceInfo();
     SerializationDeviceCI.AdapterInfo                       = m_pDevice->GetAdapterInfo();
     SerializationDeviceCI.pAsyncShaderCompilationThreadPool = m_pDevice->GetShaderCompilationThreadPool();
+    SerializationDeviceCI.ArchiveTargets                    = RenderDeviceTypeToArchiveDataFlag(m_DeviceType);
 
     switch (m_DeviceType)
     {

@@ -68,7 +68,7 @@ static constexpr ARCHIVE_DEVICE_DATA_FLAGS GetSupportedArchiveDeviceFlags()
 
 SerializationDeviceImpl::SerializationDeviceImpl(IReferenceCounters* pRefCounters, const SerializationDeviceCreateInfo& CreateInfo) :
     TBase{pRefCounters, GetRawAllocator(), nullptr, EngineCreateInfo{}, CreateInfo.AdapterInfo},
-    m_Info{Diligent::GetSupportedArchiveDeviceFlags()}
+    m_Info{Diligent::GetSupportedArchiveDeviceFlags() & CreateInfo.ArchiveTargets}
 {
     m_DeviceInfo = CreateInfo.DeviceInfo;
 
