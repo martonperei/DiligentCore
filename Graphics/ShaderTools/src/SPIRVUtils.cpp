@@ -29,6 +29,8 @@
 
 #include "spirv_cross.hpp"
 
+#include <algorithm>
+
 #if DILIGENT_USE_SPIRV_CROSS_GLSL
 #    include "spirv_glsl.hpp"
 
@@ -282,6 +284,77 @@ bool SPIRVDeclaresExtension(const std::vector<uint32_t>& SPIRV, const char* Name
 {
     // The extension's name is the instruction's only operand.
     return FindSPIRVPreambleInstruction(SPIRV, spv::OpExtension, 1, Name) != 0;
+}
+
+std::vector<uint32_t> StripSPIRVReflection(const std::vector<uint32_t>& SPIRV)
+{
+    constexpr size_t HeaderSize = 5;
+    if (SPIRV.size() < HeaderSize)
+        return SPIRV;
+
+    // The positions of the instructions to strip, and of the SPV_GOOGLE_decorate_string extension, which goes
+    // only if no other decoration needs OpDecorateString.
+    std::vector<size_t> Stripped;
+    size_t              DecorateStringExtension = 0;
+    bool                OtherUsesForDecorateString = false;
+    for (size_t i = HeaderSize; i < SPIRV.size();)
+    {
+        const uint32_t WordCount = SPIRV[i] >> 16u;
+        const spv::Op  Op        = static_cast<spv::Op>(SPIRV[i] & 0xFFFFu);
+        if (WordCount == 0 || i + WordCount > SPIRV.size())
+            break;
+
+        switch (Op)
+        {
+            case spv::OpDecorateStringGOOGLE:
+            case spv::OpMemberDecorateStringGOOGLE:
+            {
+                // The decoration follows the target, and for a member decoration the member's index.
+                const size_t DecorationWord = Op == spv::OpDecorateStringGOOGLE ? 2 : 3;
+                if (WordCount <= DecorationWord)
+                    break;
+                const spv::Decoration Decoration = static_cast<spv::Decoration>(SPIRV[i + DecorationWord]);
+                if (Decoration == spv::DecorationHlslSemanticGOOGLE || Decoration == spv::DecorationUserTypeGOOGLE)
+                    Stripped.push_back(i);
+                else
+                    OtherUsesForDecorateString = true;
+                break;
+            }
+
+            case spv::OpDecorateId:
+                if (WordCount > 2 && static_cast<spv::Decoration>(SPIRV[i + 2]) == spv::DecorationHlslCounterBufferGOOGLE)
+                    Stripped.push_back(i);
+                break;
+
+            case spv::OpExtension:
+                if (SPIRVLiteralEquals(SPIRV, i + 1, i + WordCount, "SPV_GOOGLE_hlsl_functionality1") ||
+                    SPIRVLiteralEquals(SPIRV, i + 1, i + WordCount, "SPV_GOOGLE_user_type"))
+                    Stripped.push_back(i);
+                else if (SPIRVLiteralEquals(SPIRV, i + 1, i + WordCount, "SPV_GOOGLE_decorate_string"))
+                    DecorateStringExtension = i;
+                break;
+
+            default:
+                break;
+        }
+        i += WordCount;
+    }
+    if (DecorateStringExtension != 0 && !OtherUsesForDecorateString)
+        Stripped.push_back(DecorateStringExtension);
+    if (Stripped.empty())
+        return SPIRV;
+
+    std::sort(Stripped.begin(), Stripped.end());
+    std::vector<uint32_t> Result;
+    Result.reserve(SPIRV.size());
+    size_t Copied = 0;
+    for (size_t Pos : Stripped)
+    {
+        Result.insert(Result.end(), SPIRV.begin() + Copied, SPIRV.begin() + Pos);
+        Copied = Pos + (SPIRV[Pos] >> 16u);
+    }
+    Result.insert(Result.end(), SPIRV.begin() + Copied, SPIRV.end());
+    return Result;
 }
 
 } // namespace Diligent

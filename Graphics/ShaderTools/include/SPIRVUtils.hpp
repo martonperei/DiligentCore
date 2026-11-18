@@ -63,4 +63,14 @@ uint32_t FindSPIRVExtInstImport(const std::vector<uint32_t>& SPIRV, const char* 
 /// \return Whether the code has an OpExtension of the extension.
 bool SPIRVDeclaresExtension(const std::vector<uint32_t>& SPIRV, const char* Name);
 
+/// Strips the reflection that DXC's -fspv-reflect adds, as SPIRV-Tools' strip-nonsemantic-info pass does:
+/// the decorations of SPV_GOOGLE_hlsl_functionality1 and SPV_GOOGLE_user_type, and the extensions that
+/// declare them. Unlike that pass, it keeps the non-semantic instructions, so that
+/// NonSemantic.Shader.DebugInfo.100 debug information reaches the driver.
+///
+/// \param [in] SPIRV - SPIRV code.
+///
+/// \return The SPIRV code without the reflection.
+std::vector<uint32_t> StripSPIRVReflection(const std::vector<uint32_t>& SPIRV);
+
 } // namespace Diligent
