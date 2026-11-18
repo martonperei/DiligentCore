@@ -1772,7 +1772,12 @@ void DeviceContextD3D12Impl::MapBuffer(IBuffer* pBuffer, MAP_TYPE MapType, MAP_F
         D3D12_RANGE MapRange;
         MapRange.Begin = 0;
         MapRange.End   = StaticCast<SIZE_T>(BuffDesc.Size);
-        pd3d12Resource->Map(0, &MapRange, &pMappedData);
+        const HRESULT hr = pd3d12Resource->Map(0, &MapRange, &pMappedData);
+        if (FAILED(hr))
+        {
+            LOG_ERROR_MESSAGE_ONCE("Failed to map staging buffer '", BuffDesc.Name, "' for reading. HRESULT: 0x", std::hex, static_cast<Uint32>(hr));
+            pMappedData = nullptr;
+        }
     }
     else if (MapType == MAP_WRITE)
     {
@@ -1783,7 +1788,12 @@ void DeviceContextD3D12Impl::MapBuffer(IBuffer* pBuffer, MAP_TYPE MapType, MAP_F
             {
                 // Nothing to do
             }
-            pd3d12Resource->Map(0, nullptr, &pMappedData);
+            const HRESULT hr = pd3d12Resource->Map(0, nullptr, &pMappedData);
+            if (FAILED(hr))
+            {
+                LOG_ERROR_MESSAGE_ONCE("Failed to map staging buffer '", BuffDesc.Name, "' for writing. HRESULT: 0x", std::hex, static_cast<Uint32>(hr));
+                pMappedData = nullptr;
+            }
         }
         else if (BuffDesc.Usage == USAGE_DYNAMIC)
         {
@@ -2388,8 +2398,14 @@ void DeviceContextD3D12Impl::MapTextureSubresource(ITexture*                 pTe
 
         // Map() invalidates the CPU cache, when necessary, so that CPU reads to this address
         // reflect any modifications made by the GPU.
-        void* pMappedDataPtr = nullptr;
-        TextureD3D12.GetD3D12Resource()->Map(0, &InvalidateRange, &pMappedDataPtr);
+        void*         pMappedDataPtr = nullptr;
+        const HRESULT hr             = TextureD3D12.GetD3D12Resource()->Map(0, &InvalidateRange, &pMappedDataPtr);
+        if (FAILED(hr))
+        {
+            LOG_ERROR_MESSAGE_ONCE("Failed to map staging texture '", TexDesc.Name, "'. HRESULT: 0x", std::hex, static_cast<Uint32>(hr));
+            MappedData = MappedTextureSubresource{};
+            return;
+        }
         MappedData.pData                       = reinterpret_cast<Uint8*>(pMappedDataPtr) + Footprint.Offset;
         MappedData.Stride                      = StaticCast<Uint32>(Footprint.Footprint.RowPitch);
         const TextureFormatAttribs& FmtAttribs = GetTextureFormatAttribs(TexDesc.Format);
