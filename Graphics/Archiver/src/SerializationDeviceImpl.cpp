@@ -83,11 +83,15 @@ SerializationDeviceImpl::SerializationDeviceImpl(IReferenceCounters* pRefCounter
 
     if (m_Info.SupportedArchiveTargets & ARCHIVE_DEVICE_DATA_FLAG_D3D12)
     {
-        m_pDxCompiler              = CreateDXCompiler(DXCompilerTarget::Direct3D12, 0, CreateInfo.D3D12.DxCompilerPath);
-        m_D3D12Props.pDxCompiler   = m_pDxCompiler.get();
+        m_D3D12Props.pDxCompiler = CreateInfo.D3D12.pDxCompiler;
+        if (m_D3D12Props.pDxCompiler == nullptr)
+        {
+            m_pDxCompiler            = CreateDXCompiler(DXCompilerTarget::Direct3D12, 0, CreateInfo.D3D12.DxCompilerPath);
+            m_D3D12Props.pDxCompiler = m_pDxCompiler.get();
+        }
         m_D3D12Props.ShaderVersion = CreateInfo.D3D12.ShaderVersion;
-        if (m_pDxCompiler)
-            m_Info.DXILCompilerVersion = m_pDxCompiler->GetVersion();
+        if (m_D3D12Props.pDxCompiler)
+            m_Info.DXILCompilerVersion = m_D3D12Props.pDxCompiler->GetVersion();
     }
 
     if (m_Info.SupportedArchiveTargets & (ARCHIVE_DEVICE_DATA_FLAG_GL | ARCHIVE_DEVICE_DATA_FLAG_GLES))
@@ -105,11 +109,15 @@ SerializationDeviceImpl::SerializationDeviceImpl(IReferenceCounters* pRefCounter
     {
         const Version& ApiVersion = CreateInfo.Vulkan.ApiVersion;
         m_VkProps.VkVersion       = (ApiVersion.Major << 22u) | (ApiVersion.Minor << 12u);
-        m_pVkDxCompiler           = CreateDXCompiler(DXCompilerTarget::Vulkan, m_VkProps.VkVersion, CreateInfo.Vulkan.DxCompilerPath);
-        m_VkProps.pDxCompiler     = m_pVkDxCompiler.get();
+        m_VkProps.pDxCompiler     = CreateInfo.Vulkan.pDxCompiler;
+        if (m_VkProps.pDxCompiler == nullptr)
+        {
+            m_pVkDxCompiler       = CreateDXCompiler(DXCompilerTarget::Vulkan, m_VkProps.VkVersion, CreateInfo.Vulkan.DxCompilerPath);
+            m_VkProps.pDxCompiler = m_pVkDxCompiler.get();
+        }
         m_VkProps.SupportsSpirv14 = ApiVersion >= Version{1, 2} || CreateInfo.Vulkan.SupportsSpirv14;
-        if (m_pVkDxCompiler)
-            m_Info.SPIRVCompilerVersion = m_pVkDxCompiler->GetVersion();
+        if (m_VkProps.pDxCompiler)
+            m_Info.SPIRVCompilerVersion = m_VkProps.pDxCompiler->GetVersion();
     }
 
     if (m_Info.SupportedArchiveTargets & ARCHIVE_DEVICE_DATA_FLAG_METAL_MACOS)

@@ -79,11 +79,20 @@ struct SerializationDeviceD3D12Info
     /// DX Compiler path
     const Char* DxCompilerPath DEFAULT_INITIALIZER(nullptr);
 
+    /// DX compiler to use instead of loading one from DxCompilerPath, for example
+    /// the compiler of a render device (see IRenderDeviceD3D12::GetDXCompiler()).
+
+    /// \remarks    The serialization device does not take ownership of the compiler.
+    ///             The compiler must outlive the serialization device.
+    struct IDXCompiler* pDxCompiler DEFAULT_INITIALIZER(nullptr);
+
 #if DILIGENT_CPP_INTERFACE
     /// Tests if two structures are equivalent
     bool operator==(const SerializationDeviceD3D12Info& RHS) const noexcept
     {
-        return ShaderVersion == RHS.ShaderVersion && SafeStrEqual(DxCompilerPath, RHS.DxCompilerPath);
+        return ShaderVersion == RHS.ShaderVersion &&
+               SafeStrEqual(DxCompilerPath, RHS.DxCompilerPath) &&
+               pDxCompiler   == RHS.pDxCompiler;
     }
     bool operator!=(const SerializationDeviceD3D12Info& RHS) const noexcept
     {
@@ -147,13 +156,21 @@ struct SerializationDeviceVkInfo
     /// Path to DX compiler for Vulkan
     const Char* DxCompilerPath  DEFAULT_INITIALIZER(nullptr);
 
+    /// DX compiler for Vulkan to use instead of loading one from DxCompilerPath, for example
+    /// the compiler of a render device (see IRenderDeviceVk::GetDXCompiler()).
+
+    /// \remarks    The serialization device does not take ownership of the compiler.
+    ///             The compiler must outlive the serialization device.
+    struct IDXCompiler* pDxCompiler DEFAULT_INITIALIZER(nullptr);
+
 #if DILIGENT_CPP_INTERFACE
     /// Tests if two structures are equivalent
     bool operator==(const SerializationDeviceVkInfo& RHS) const noexcept
     {
         return ApiVersion      == RHS.ApiVersion &&
                SupportsSpirv14 == RHS.SupportsSpirv14 &&
-               SafeStrEqual(DxCompilerPath, RHS.DxCompilerPath);
+               SafeStrEqual(DxCompilerPath, RHS.DxCompilerPath) &&
+               pDxCompiler     == RHS.pDxCompiler;
     }
     bool operator!=(const SerializationDeviceVkInfo& RHS) const noexcept
     {
